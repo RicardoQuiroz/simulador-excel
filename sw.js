@@ -1,7 +1,9 @@
 // Trabajador de servicio: guarda la aplicación en el dispositivo para que abra sin conexión.
-// Estrategia: se responde al instante con la copia guardada y, si hay señal, se actualiza
-// por detrás para la próxima visita. Al cambiar de versión, subir el número de CACHE.
-const CACHE = 'simulador-v2';
+// Estrategia: si hay señal, se usa la versión publicada (así cada cambio llega en la
+// primera visita) y se guarda una copia. Si no hay señal o tarda más de ESPERA, se usa
+// la copia guardada. Al cambiar de versión, subir el número de CACHE.
+const CACHE = 'simulador-v5';
+const ESPERA = 4000; // milisegundos
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -23,11 +25,20 @@ self.addEventListener('fetch', e => {
   e.respondWith((async () => {
     const c = await caches.open(CACHE);
     const guardada = await c.match(r);
-    const red = fetch(r).then(resp => { if (resp.ok) c.put(r, resp.clone()); return resp; }).catch(() => null);
-    if (guardada) { e.waitUntil(red); return guardada; }
+    // Se pide por la dirección (no se copia la petición: Chrome no deja copiar la de una página).
+    // "no-cache": se pregunta al servidor si cambió, así nunca se usa una copia vieja del navegador.
+    const red = fetch(r.url, { cache: 'no-cache', credentials: 'same-origin' }).then(resp => { if (resp.ok) c.put(r, resp.clone()); return resp; }).catch(() => null);
+    if (guardada) {
+      // Señal lenta: se responde con la copia y la versión nueva se guarda para la próxima vez.
+      const plazo = new Promise(ok => setTimeout(() => ok(null), ESPERA));
+      const fresca = await Promise.race([red, plazo]);
+      if (fresca && fresca.ok) return fresca;
+      e.waitUntil(red);
+      return guardada;
+    }
     const fresca = await red;
-    if (fresca) return fresca;
-    if (r.mode === 'navigate') { const inicio = await c.match('./') || await c.match('index.html'); if (inicio) return inicio; }
+    if (fresca && (fresca.ok || r.mode !== 'navigate')) return fresca;
+    if (r.mode === 'navigate') { const inicio = await c.match(r, { ignoreSearch: true }) || await c.match('./') || await c.match('index.html'); if (inicio) return inicio; }
     return new Response('Sin conexión', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
   })());
 });
