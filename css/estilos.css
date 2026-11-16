@@ -1,0 +1,140 @@
+/* Simulador de hoja de cálculo — estilos de escritorio. Sin fuentes web ni imágenes. */
+:root {
+  --verde: #107c41;
+  --verde-claro: #e8f2ec;
+  --gris-cinta: #f5f5f5;
+  --borde: #d6d6d6;
+  --cuadricula: #e1e1e1;
+  --texto: #242424;
+  --fuente-ui: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --fuente-celda: "Aptos Narrow", Calibri, "Segoe UI", Carlito, Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { font: 12px/1.3 var(--fuente-ui); color: var(--texto); background: #fff; overflow: hidden; }
+button, select, input { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+
+#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; position: relative; user-select: none; }
+
+/* ---- barra de título ---- */
+.titulo { display: flex; align-items: center; gap: 2px; background: var(--verde); color: #fff; padding: 3px 8px; min-height: 30px; }
+.titulo .rapido { background: none; border: 0; color: #fff; padding: 3px 5px; border-radius: 3px; cursor: pointer; line-height: 0; }
+.titulo .rapido:hover:not(:disabled) { background: rgba(255,255,255,.2); }
+.titulo .rapido:disabled { opacity: .4; cursor: default; }
+.nombre-libro { flex: 1; text-align: center; font-size: 12.5px; padding-right: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ico { width: 18px; height: 18px; flex: none; }
+
+/* ---- pestañas de la cinta ---- */
+.pestanas { display: flex; background: var(--gris-cinta); padding: 0 6px; gap: 1px; overflow-x: auto; scrollbar-width: none; }
+.pest { background: none; border: 0; padding: 7px 12px 6px; cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
+.pest:hover { background: #e6e6e6; }
+.pest.activa { border-bottom-color: var(--verde); font-weight: 600; color: var(--verde); }
+.pest.archivo { color: var(--texto); }
+
+/* ---- cinta ---- */
+.cinta { background: #fff; border-bottom: 1px solid var(--borde); box-shadow: 0 1px 2px rgba(0,0,0,.06); min-height: 96px; overflow-x: auto; scrollbar-width: thin; }
+.panel { display: flex; align-items: stretch; padding: 3px 4px 0; width: max-content; min-width: 100%; }
+.grupo { display: flex; flex-direction: column; padding: 0 7px; border-right: 1px solid #e3e3e3; }
+.botones { display: flex; flex: 1; align-items: flex-start; gap: 2px; padding-top: 2px; }
+.rotulo { text-align: center; font-size: 10.5px; color: #666; padding: 2px 0 3px; white-space: nowrap; }
+.pila { display: flex; flex-direction: column; gap: 1px; }
+.renglones { display: flex; flex-direction: column; gap: 3px; padding-top: 3px; }
+.renglon { display: flex; align-items: center; gap: 1px; }
+.bt { display: inline-flex; align-items: center; gap: 4px; background: none; border: 1px solid transparent; border-radius: 3px; padding: 2px 4px; cursor: pointer; white-space: nowrap; min-height: 22px; }
+.bt:hover { background: #e9e9e9; }
+.bt:active, .bt.on { background: #d2e5d9; border-color: #a9cdb7; }
+.bt.g { flex-direction: column; justify-content: flex-start; gap: 3px; width: auto; min-width: 54px; max-width: 88px; height: 72px; padding: 5px 3px 2px; white-space: normal; text-align: center; line-height: 1.1; font-size: 10.5px; }
+.bt.g .ico { width: 28px; height: 28px; }
+.bt.p { padding: 2px 3px; }
+.bt.letra { width: 24px; justify-content: center; font: 700 13px/1 Georgia, "Times New Roman", serif; }
+.bt.l-cursiva { font-style: italic; font-weight: 400; }
+.bt.l-subrayado { text-decoration: underline; font-weight: 400; }
+.ctl { height: 22px; border: 1px solid #c8c8c8; border-radius: 3px; background: #fff; padding: 0 4px; }
+.ctl-fuente { width: 124px; text-align: left; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+.ctl-tam { width: 50px; }
+.ctl-num { width: 138px; }
+.tri { font-size: 9px; color: #666; }
+
+/* ---- barra de fórmulas ---- */
+.barra-formulas { display: flex; align-items: stretch; gap: 3px; padding: 4px 6px; background: var(--gris-cinta); border-bottom: 1px solid var(--borde); }
+.sin-barra .barra-formulas { display: none; }
+.cuadro-nombres { width: 92px; border: 1px solid #c8c8c8; padding: 2px 6px; border-radius: 2px; user-select: text; }
+.bf { background: none; border: 0; width: 24px; cursor: pointer; color: #888; border-radius: 3px; }
+.bf:hover { background: #e3e3e3; }
+.editando .bf-cancelar { color: #c0392b; }
+.editando .bf-aceptar { color: var(--verde); }
+.bf-fx { color: #444; font: italic 13px Georgia, serif; }
+.entrada-formula { flex: 1; min-width: 0; border: 1px solid #c8c8c8; padding: 2px 6px; border-radius: 2px; font: 11pt var(--fuente-celda); user-select: text; }
+.cuadro-nombres:focus, .entrada-formula:focus { outline: 1px solid var(--verde); border-color: var(--verde); }
+
+/* ---- cuadrícula ---- */
+.zona { flex: 1; overflow: auto; background: #f0f0f0; min-height: 0; }
+.lienzo { position: relative; display: inline-block; outline: none; background: #fff; vertical-align: top; }
+.hoja { border-collapse: separate; border-spacing: 0; table-layout: fixed; font: 11pt/1.2 var(--fuente-celda); }
+.hoja col { width: 80px; }
+.hoja td { height: 20px; padding: 0 3px; border-right: 1px solid var(--cuadricula); border-bottom: 1px solid var(--cuadricula); overflow: hidden; white-space: nowrap; vertical-align: bottom; cursor: cell; }
+.hoja td.desb { overflow: visible; }
+.hoja td.ensel { background-image: linear-gradient(rgba(16,124,65,.11), rgba(16,124,65,.11)); }
+.sin-cuadricula .hoja td { border-color: transparent; }
+.hoja th { background: #f3f3f3; color: #555; font: 11px var(--fuente-ui); font-weight: 400; border-right: 1px solid #cfcfcf; border-bottom: 1px solid #cfcfcf; position: sticky; z-index: 3; cursor: default; }
+.hoja th.col { top: 0; height: 20px; }
+.hoja th.fila { left: 0; z-index: 2; }
+.hoja th.esq { top: 0; left: 0; z-index: 4; }
+.hoja th.marc { background: #d9e9df; color: #0b5a2e; }
+.hoja th.col.marc { border-bottom: 2px solid var(--verde); }
+.hoja th.fila.marc { border-right: 2px solid var(--verde); }
+.sin-encabezados .hoja th { visibility: hidden; }
+.redim { position: absolute; top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize; z-index: 5; }
+.sel { position: absolute; border: 2px solid var(--verde); pointer-events: none; z-index: 1; }
+.asa { position: absolute; right: -5px; bottom: -5px; width: 8px; height: 8px; background: var(--verde); border: 1px solid #fff; cursor: crosshair; pointer-events: auto; }
+.editando .asa { display: none; }
+.marca, .marca-copia { position: absolute; pointer-events: none; z-index: 1; border: 2px dashed #1a73e8; }
+.marca-copia { border-color: var(--verde); animation: hormigas 1s steps(2) infinite; }
+@keyframes hormigas { 50% { border-style: dotted; } }
+.editor { position: absolute; z-index: 6; border: 2px solid var(--verde); outline: none; padding: 0 2px; margin: -1px 0 0 -1px; font: 11pt/1.2 var(--fuente-celda); background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.2); user-select: text; }
+
+.editor.oculto { opacity: 0; pointer-events: none; width: 2px !important; border: 0; padding: 0; box-shadow: none; }
+
+/* ---- pie ---- */
+.pie { display: flex; flex-direction: column; background: var(--gris-cinta); border-top: 1px solid var(--borde); }
+.hojas { display: flex; align-items: center; gap: 2px; padding: 0 30px; min-height: 26px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid #e3e3e3; }
+.hoja-pest { background: none; border: 0; border-bottom: 3px solid transparent; padding: 5px 12px 3px; cursor: pointer; white-space: nowrap; }
+.hoja-pest:hover { background: #e6e6e6; }
+.hoja-pest.activa { background: #fff; color: var(--verde); font-weight: 600; border-bottom-color: var(--verde); }
+.hoja-nueva { background: none; border: 0; cursor: pointer; padding: 3px 5px; border-radius: 50%; line-height: 0; color: #555; }
+.hoja-nueva:hover { background: #e0e0e0; }
+.hoja-edit { width: 110px; padding: 2px 5px; border: 1px solid var(--verde); }
+.estado { display: flex; align-items: center; gap: 14px; padding: 2px 10px; font-size: 11.5px; color: #444; min-height: 22px; }
+.estado .resumen { flex: 1; text-align: right; white-space: pre; }
+.estado .modo { min-width: 70px; }
+.zoom { width: 110px; accent-color: var(--verde); }
+.zoom-txt { width: 36px; text-align: right; }
+
+/* ---- avisos, menús, ayudas ---- */
+.aviso { position: absolute; left: 50%; top: 176px; transform: translateX(-50%); max-width: min(520px, 90%); background: #fff; border: 1px solid #c9c9c9; border-left: 5px solid var(--verde); border-radius: 4px; padding: 10px 14px; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,.22); z-index: 40; cursor: pointer; }
+.menu { position: absolute; z-index: 50; background: #fff; border: 1px solid #c8c8c8; border-radius: 4px; box-shadow: 0 6px 18px rgba(0,0,0,.2); padding: 4px; min-width: 150px; display: flex; flex-direction: column; }
+.menu button { background: none; border: 0; text-align: left; padding: 5px 12px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
+.menu button:hover { background: #e9f3ed; }
+.menu hr { border: 0; border-top: 1px solid #e3e3e3; margin: 3px 0; width: 100%; }
+.menu.paleta { display: grid; grid-template-columns: repeat(10, 18px); gap: 2px; min-width: 0; padding: 6px; }
+.menu.paleta > button:first-child, .menu.paleta > hr { grid-column: 1 / -1; }
+.menu.paleta .muestra { width: 18px; height: 18px; padding: 0; border: 1px solid #bbb; border-radius: 0; }
+.menu.paleta .muestra:hover { outline: 2px solid #f29436; }
+.pista-fn { position: absolute; z-index: 30; background: #fff; border: 1px solid #c8c8c8; border-radius: 3px; box-shadow: 0 3px 10px rgba(0,0,0,.18); font-size: 12px; display: flex; flex-direction: column; }
+.pista-fn .sug { background: none; border: 0; text-align: left; padding: 3px 10px; cursor: pointer; }
+.pista-fn .sug i { color: var(--verde); font-family: Georgia, serif; margin-right: 3px; }
+.pista-fn .sug.primera, .pista-fn .sug:hover { background: #e9f3ed; }
+.pista-fn .sintaxis { padding: 4px 9px; background: #fffbe6; border-top: 1px solid #eee; white-space: nowrap; }
+
+.dlg { border: 1px solid #b5b5b5; border-radius: 6px; padding: 0; box-shadow: 0 12px 40px rgba(0,0,0,.3); width: min(430px, 94vw); font: 12.5px var(--fuente-ui); color: var(--texto); }
+.dlg::backdrop { background: rgba(0,0,0,.25); }
+.dlg form { display: flex; flex-direction: column; gap: 9px; padding: 16px; }
+.dlg h2 { margin: 0 0 2px; font-size: 15px; font-weight: 600; }
+.dlg label { display: flex; flex-direction: column; gap: 3px; }
+.dlg input, .dlg select { border: 1px solid #b5b5b5; border-radius: 3px; padding: 4px 6px; }
+.dlg .df-lista { font: 12.5px var(--fuente-ui); }
+.df-desc { min-height: 52px; background: #f6f6f6; border-radius: 3px; padding: 7px 9px; line-height: 1.4; }
+.df-botones { display: flex; justify-content: flex-end; gap: 8px; }
+.df-botones button { padding: 5px 18px; border: 1px solid #b5b5b5; border-radius: 3px; background: #fff; cursor: pointer; }
+.df-botones .primario { background: var(--verde); border-color: var(--verde); color: #fff; }

@@ -1,0 +1,279 @@
+{
+  "_nota": "Lección de ejemplo. Los datos son inventados; se reemplazarán por los del archivo real '0050 Si-Consumo Megabytes.xlsx'. Las fórmulas se guardan en formato interno neutro (nombres en inglés, coma como separador) y se muestran según la configuración regional.",
+
+  "identidad": {
+    "id": "L07-funcion-si",
+    "titulo": "Función SI: clasificar el consumo de megas",
+    "materia": "Excel básico",
+    "tema": "Funciones lógicas",
+    "idioma": "es",
+    "nivel": "básico",
+    "duracionMin": 12
+  },
+
+  "pedagogia": {
+    "objetivos": [
+      "Escribir una condición que compare dos celdas",
+      "Usar la función SI para mostrar un texto según el resultado de la condición",
+      "Copiar la fórmula a toda la columna con el controlador de relleno"
+    ],
+    "prerrequisitos": ["L03-formulas-autosuma", "L05-referencias"],
+    "destreza": "Clasificar datos con una condición",
+    "repasoDe": "L03-formulas-autosuma"
+  },
+
+  "libroInicial": {
+    "hojaActiva": "Consumo",
+    "hojas": [
+      {
+        "nombre": "Consumo",
+        "anchos": { "A": 140, "B": 90, "C": 110, "D": 130 },
+        "celdas": {
+          "A1": { "v": "Cliente", "fmt": { "negrita": true, "relleno": "#D9E1F2" } },
+          "B1": { "v": "Plan (MB)", "fmt": { "negrita": true, "relleno": "#D9E1F2" } },
+          "C1": { "v": "Consumo (MB)", "fmt": { "negrita": true, "relleno": "#D9E1F2" } },
+          "D1": { "v": "Estado", "fmt": { "negrita": true, "relleno": "#D9E1F2" } },
+          "A2": { "v": "Ana Flores" },   "B2": { "v": 2000 }, "C2": { "v": 1850 },
+          "A3": { "v": "Luis Mamani" },  "B3": { "v": 2000 }, "C3": { "v": 2430 },
+          "A4": { "v": "Rosa Choque" },  "B4": { "v": 5000 }, "C4": { "v": 4100 },
+          "A5": { "v": "Juan Rojas" },   "B5": { "v": 1000 }, "C5": { "v": 1320 },
+          "A6": { "v": "Elena Vargas" }, "B6": { "v": 5000 }, "C6": { "v": 5000 },
+          "A8": { "v": "Total consumido", "fmt": { "negrita": true } }
+        },
+        "nombres": {},
+        "validaciones": [],
+        "formatosCondicionales": []
+      }
+    ]
+  },
+
+  "datosVariables": {
+    "activo": true,
+    "descripcion": "En cada intento el consumo cambia, para que nadie memorice las respuestas.",
+    "celdas": {
+      "C2:C6": { "tipo": "enteroAleatorio", "min": 600, "max": 6000, "multiploDe": 10 }
+    }
+  },
+
+  "interfaz": {
+    "pestanasVisibles": ["inicio", "formulas"],
+    "comandosHabilitados": [
+      "inicio.autosuma",
+      "inicio.negrita",
+      "formulas.insertar-funcion",
+      "formulas.logicas"
+    ],
+    "comandosOcultos": [],
+    "celdasEditables": ["C8", "D2:D6"],
+    "permitir": {
+      "pegar": true,
+      "rellenar": true,
+      "insertarFilas": false,
+      "agregarHojas": false,
+      "menuContextual": true
+    }
+  },
+
+  "modos": { "mostrar": true, "guiado": true, "reto": true, "libre": true },
+
+  "pasos": [
+    {
+      "id": "p1",
+      "instruccion": "Repaso: en la celda C8 calcula el total de megas consumidos por todos los clientes.",
+      "resaltar": "celda:C8",
+      "puntos": 10,
+      "validar": {
+        "combinar": "todas",
+        "reglas": [
+          { "tipo": "es_formula", "celda": "C8" },
+          { "tipo": "formula_equivalente", "celda": "C8", "referencia": "SUM(C2:C6)", "juegosDeDatos": 3 }
+        ]
+      },
+      "pistas": [
+        "Para sumar varias celdas existe una función que ya conoces.",
+        "Selecciona C8 y pulsa el botón Autosuma de la pestaña Inicio.",
+        "La fórmula tiene esta forma: =SUMA(primera:última)"
+      ],
+      "erroresComunes": [
+        { "error": "valor-en-vez-de-formula" },
+        { "error": "rango-incompleto" }
+      ],
+      "alCompletar": { "sonido": "correcto", "mensaje": "¡Bien! Ya recordaste cómo sumar." }
+    },
+    {
+      "id": "p2",
+      "instruccion": "Haz clic en la celda D2. Ahí vamos a indicar si Ana se pasó de su plan.",
+      "resaltar": "celda:D2",
+      "puntos": 5,
+      "validar": { "combinar": "todas", "reglas": [ { "tipo": "seleccion", "rango": "D2" } ] },
+      "pistas": [
+        "Busca la columna Estado.",
+        "Es la celda de la columna D, fila 2.",
+        "Tócala una vez."
+      ],
+      "erroresComunes": [],
+      "alCompletar": { "sonido": "correcto" }
+    },
+    {
+      "id": "p3",
+      "instruccion": "Escribe una fórmula con SI: cuando el consumo sea mayor que el plan debe decir \"Excedido\"; en caso contrario, \"Dentro del plan\".",
+      "resaltar": "celda:D2",
+      "puntos": 40,
+      "validar": {
+        "combinar": "todas",
+        "reglas": [
+          { "tipo": "es_formula", "celda": "D2" },
+          { "tipo": "usa_funcion", "celda": "D2", "funcion": "IF" },
+          {
+            "tipo": "formula_equivalente",
+            "celda": "D2",
+            "referencia": "IF(C2>B2,\"Excedido\",\"Dentro del plan\")",
+            "juegosDeDatos": 4,
+            "ignorarMayusculas": true
+          }
+        ]
+      },
+      "pistas": [
+        "SI necesita tres datos: una pregunta, qué mostrar cuando la respuesta es sí y qué mostrar cuando es no.",
+        "La pregunta es: ¿el consumo (C2) es mayor que el plan (B2)?",
+        "Completa: =SI(C2>B2; \"...\"; \"...\")"
+      ],
+      "erroresComunes": [
+        { "error": "olvido-signo-igual" },
+        { "error": "texto-sin-comillas" },
+        { "error": "separador-incorrecto" },
+        { "error": "argumentos-si-invertidos" },
+        {
+          "si": { "tipo": "valor_celda", "celda": "D2", "valorTexto": true, "sinFormula": true },
+          "feedback": "Escribiste el texto directamente. Si el consumo cambia, no se actualizará. Usa la función SI."
+        }
+      ],
+      "microDemo": { "desde": 2, "hasta": 13 },
+      "alCompletar": { "sonido": "correcto", "mensaje": "¡Excelente! Excel ya decide por ti." }
+    },
+    {
+      "id": "p4",
+      "instruccion": "Copia la fórmula hacia abajo hasta D6 arrastrando el cuadrito de la esquina de la celda.",
+      "resaltar": "rango:D2:D6",
+      "puntos": 25,
+      "validar": {
+        "combinar": "todas",
+        "reglas": [
+          {
+            "tipo": "rango_relleno",
+            "rango": "D3:D6",
+            "referenciaPrimeraFila": "IF(C3>B3,\"Excedido\",\"Dentro del plan\")"
+          }
+        ]
+      },
+      "pistas": [
+        "No hace falta escribir la fórmula cinco veces.",
+        "Selecciona D2 y busca el cuadrito verde en su esquina inferior derecha.",
+        "Arrástralo hasta la fila 6 y suelta."
+      ],
+      "erroresComunes": [
+        {
+          "si": { "tipo": "rango_valores_fijos", "rango": "D3:D6" },
+          "feedback": "Escribiste los textos a mano. Copia la fórmula para que Excel haga el trabajo."
+        }
+      ],
+      "alCompletar": { "sonido": "correcto" }
+    },
+    {
+      "id": "p5",
+      "instruccion": "Cambia el consumo de Ana (C2) por 2500 y observa qué pasa en la columna Estado.",
+      "resaltar": "celda:C2",
+      "puntos": 10,
+      "desbloquearCeldas": ["C2"],
+      "validar": {
+        "combinar": "todas",
+        "reglas": [
+          { "tipo": "valor_celda", "celda": "C2", "valor": 2500 },
+          { "tipo": "valor_celda", "celda": "D2", "valor": "Excedido" }
+        ]
+      },
+      "pistas": [
+        "Solo tienes que escribir un número nuevo.",
+        "Selecciona C2, escribe 2500 y pulsa Enter.",
+        "Mira la celda D2 después de pulsar Enter."
+      ],
+      "erroresComunes": [],
+      "alCompletar": { "sonido": "correcto", "mensaje": "El estado cambió solo. Para eso sirven las fórmulas." }
+    }
+  ],
+
+  "checkpoints": [
+    {
+      "id": "c1",
+      "despuesDelPaso": "p3",
+      "tipo": "pregunta",
+      "pregunta": {
+        "enunciado": "En =SI(C2>B2; \"Excedido\"; \"Dentro del plan\"), ¿qué muestra Excel cuando C2 vale 1000 y B2 vale 2000?",
+        "opciones": [
+          { "texto": "Excedido", "correcta": false, "explicacion": "1000 no es mayor que 2000, así que la condición no se cumple." },
+          { "texto": "Dentro del plan", "correcta": true, "explicacion": "Correcto: la condición es falsa y SI muestra el tercer dato." },
+          { "texto": "FALSO", "correcta": false, "explicacion": "FALSO es el resultado de la condición, pero SI lo convierte en el texto que tú elegiste." }
+        ]
+      },
+      "puntos": 10,
+      "siFalla": { "accion": "explicarYContinuar" }
+    },
+    {
+      "id": "c2",
+      "despuesDelPaso": "p5",
+      "tipo": "video",
+      "medio": { "origen": "youtube", "id": "REEMPLAZAR" },
+      "alternativaLigera": {
+        "texto": "La función SI aparece en casi todas las hojas de cálculo de trabajo: aprobar o reprobar, pagar o no un bono, alertar cuando falta inventario.",
+        "imagen": "medios/si-ejemplos.webp"
+      },
+      "puntos": 0
+    }
+  ],
+
+  "demo": [
+    { "accion": "narrar", "texto": "Tenemos el plan de cada cliente y lo que consumió. Queremos saber quién se pasó." },
+    { "accion": "resaltar", "objetivo": "rango:B2:C6", "estilo": "recuadro", "ms": 2000 },
+    { "accion": "clic", "en": "celda:D2" },
+    { "accion": "narrar", "texto": "La función SI hace una pregunta y responde una cosa u otra." },
+    { "accion": "escribir", "en": "celda", "texto": "=SI(" },
+    { "accion": "narrar", "texto": "Primero, la pregunta: ¿el consumo es mayor que el plan?" },
+    { "accion": "clic", "en": "celda:C2" },
+    { "accion": "escribir", "en": "celda", "texto": ">" },
+    { "accion": "clic", "en": "celda:B2" },
+    { "accion": "narrar", "texto": "Después, qué mostrar cuando la respuesta es sí. Los textos van entre comillas." },
+    { "accion": "escribir", "en": "celda", "texto": ";\"Excedido\"" },
+    { "accion": "narrar", "texto": "Y por último, qué mostrar cuando la respuesta es no." },
+    { "accion": "escribir", "en": "celda", "texto": ";\"Dentro del plan\")" },
+    { "accion": "tecla", "tecla": "Enter" },
+    { "accion": "sonido", "id": "correcto" },
+    { "accion": "narrar", "texto": "Ahora copiamos la fórmula a los demás clientes." },
+    { "accion": "clic", "en": "celda:D2" },
+    { "accion": "arrastrar", "desde": "ui:controlador-relleno", "hasta": "celda:D6" },
+    { "accion": "pausa", "mensaje": "Cada fila se evaluó por separado. Ahora inténtalo tú." },
+    { "accion": "restaurar", "a": "inicial" }
+  ],
+
+  "reto": {
+    "enunciado": "Agrega en la columna E una fórmula que diga \"Llamar\" cuando el cliente haya consumido menos de la mitad de su plan, y deje la celda vacía en caso contrario.",
+    "celdasEditables": ["E1:E6"],
+    "validar": {
+      "combinar": "todas",
+      "reglas": [
+        { "tipo": "usa_funcion", "celda": "E2", "funcion": "IF" },
+        { "tipo": "rango_relleno", "rango": "E2:E6", "referenciaPrimeraFila": "IF(C2<B2/2,\"Llamar\",\"\")" }
+      ]
+    },
+    "puntos": 100
+  },
+
+  "cierre": {
+    "mensaje": "Ya sabes usar SI para que Excel tome decisiones simples.",
+    "resumen": [
+      "SI tiene tres partes: condición, valor si se cumple, valor si no se cumple",
+      "Los textos dentro de una fórmula van entre comillas",
+      "Al copiar la fórmula, las referencias se ajustan a cada fila"
+    ],
+    "siguiente": "L08-y-o-si-anidados"
+  }
+}
