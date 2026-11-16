@@ -12,7 +12,7 @@ import { crearPanel } from './leccion/panel.js';
 import { crearSonidos } from './leccion/sonidos.js';
 import { crearReproductor } from './leccion/reproductor.js';
 import { crearGrabadora } from './leccion/grabadora.js';
-import { SONIDOS, aplicarCatalogos } from './leccion/catalogos.js';
+import { SONIDOS, POLITICA, aplicarCatalogos } from './leccion/catalogos.js';
 import { crearBuzon } from './nucleo/buzon.js';
 import { conectar, SesionTerminada } from './nucleo/servidor.js';
 
@@ -105,6 +105,42 @@ function elegirLeccion(lecciones, actual, puedeCancelar) {
   if (cancelar) cancelar.addEventListener('click', () => location.reload());
 }
 
+// ------------------------------------------------------------------ seguimiento del docente
+// El dispositivo del estudiante avisa cada medio minuto (y en cada cambio de paso) en qué
+// paso está. Es un mensaje diminuto. Si no hay señal, simplemente no se envía.
+function seguimiento(srv, lec, buzon, idLeccion) {
+  const P = POLITICA.monitor || { latidoSeg: 30 };
+  const dispositivo = matchMedia('(max-width: 767px), (pointer: coarse)').matches ? 'movil' : 'escritorio';
+  const anotar = (tipo, datos) => buzon.agregar({ tipo, t: Date.now(), leccion: idLeccion, ...datos });
+  anotar('sesion_inicio', { dispositivo, ancho: innerWidth });
+
+  let firma = '';
+  const latir = () => {
+    if (document.hidden || !navigator.onLine) return;
+    const s = lec.estado();
+    srv.api('/latido', { leccion: idLeccion, paso: s.paso ? s.paso.id : null, estado: s.estado, dispositivo }).catch(() => { /* sin señal: se intenta en el próximo latido */ });
+  };
+  setInterval(latir, (P.latidoSeg || 30) * 1000);
+  lec.alCambiar(() => { const s = lec.estado(), f = s.estado + '|' + (s.paso ? s.paso.id : ''); if (f !== firma) { firma = f; latir(); } });
+  addEventListener('visibilitychange', latir);
+
+  // Cortes de conexión: cuánto duró cada uno.
+  let cortado = 0;
+  addEventListener('offline', () => { cortado = Date.now(); });
+  addEventListener('online', () => { if (cortado) anotar('conexion_recuperada', { segundos: Math.round((Date.now() - cortado) / 1000) }); cortado = 0; latir(); });
+
+  // Aviso de privacidad: se muestra una sola vez en cada dispositivo.
+  const visto = crearAlmacen('simulador:privacidad');
+  if (!visto.leer()) {
+    const caja = document.createElement('div');
+    caja.className = 'privacidad'; caja.setAttribute('role', 'status');
+    caja.innerHTML = `<p>${esc(T.privacidad)}</p><button class="primario">${esc(T.entendido)}</button>`;
+    caja.querySelector('button').addEventListener('click', () => { visto.escribir(true); caja.remove(); });
+    marco.appendChild(caja);
+  }
+  latir();
+}
+
 // ------------------------------------------------------------------ lección
 async function leccionLocal() {
   const r = await fetch(LECCION_LOCAL);
@@ -129,19 +165,24 @@ try {
       if (eventos.length) await srv.api('/eventos', { eventos });
       for (const intento of lote.filter(x => x.clase === 'intento')) await srv.api('/intento', intento);
     });
-    const buzon = crearBuzon('simulador:buzon', enviar || null);
+    // Lo guardado en el dispositivo va separado por persona: en un celular compartido,
+    // nadie ve el avance de otro ni se envían datos de uno con el nombre de otro.
+    const persona = remoto && remoto.usuario && remoto.usuario.id ? ':' + remoto.usuario.id : '';
+    const buzon = crearBuzon('simulador:buzon' + persona, enviar || null);
     const lec = crearLeccion({
       leccion, libro, motor, desp, vista, reg, sonidos, repro, grab, buzon,
-      almacen: crearAlmacen('simulador:' + leccion.identidad.id),
+      almacen: crearAlmacen('simulador:' + leccion.identidad.id + persona),
       intentosPrevios: remoto ? remoto.intentos : null,
       maxIntentos: remoto && remoto.colocacion ? remoto.colocacion.maxIntentos : null
     });
     crearPanel(document.getElementById('panel'), capa, lec, reg, {
       docente,
-      alConfigurar: remoto && docente && remoto.lecciones ? () => elegirLeccion(remoto.lecciones, leccion.identidad.id, true) : null
+      alConfigurar: remoto && docente && remoto.lecciones ? () => elegirLeccion(remoto.lecciones, leccion.identidad.id, true) : null,
+      alMonitor: srv && docente ? () => { location.href = 'monitor.html'; } : null
     });
     window.simulador.leccion = lec;
     window.simulador.buzon = buzon;
+    if (srv && !docente) seguimiento(srv, lec, buzon, leccion.identidad.id);
     buzon.vaciar();
   }
 } catch (e) {

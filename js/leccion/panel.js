@@ -120,7 +120,7 @@ export function crearPanel(panel, capa, lec, reg, opciones = {}) {
         ${L.reto && L.modos && L.modos.reto ? `<button data-a="reto">${esc(T.reto)}</button>` : ''}
         ${!L.modos || L.modos.libre ? `<button data-a="libre">${esc(T.libre)}</button>` : ''}
       </div>
-      ${opciones.docente ? `<div class="t-docente"><button data-a="g-grabar">● ${esc(T.grabIniciar)}</button>${opciones.alConfigurar ? ` <button data-a="configurar">${esc(T.cambiarLeccion)}</button>` : ''}</div>` : ''}`;
+      ${opciones.docente ? `<div class="t-docente"><button data-a="g-grabar">● ${esc(T.grabIniciar)}</button>${opciones.alConfigurar ? ` <button data-a="configurar">${esc(T.cambiarLeccion)}</button>` : ''}${opciones.alMonitor ? ` <button data-a="monitor">${esc(T.abrirMonitor)}</button>` : ''}</div>` : ''}`;
   }
 
   function tarjetaCheckpoint(s) {
@@ -224,6 +224,7 @@ export function crearPanel(panel, capa, lec, reg, opciones = {}) {
       case 'cerrar-cp': lec.cerrarCheckpoint(); break;
       case 'demo': lec.demo(); break;
       case 'configurar': opciones.alConfigurar(); break;
+      case 'monitor': opciones.alMonitor(); break;
       case 'd-alternar': R.alternar(); break;
       case 'd-anterior': R.anterior(); break;
       case 'd-siguiente': R.siguiente(); break;

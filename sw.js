@@ -1,7 +1,7 @@
 // Trabajador de servicio: guarda la aplicación en el dispositivo para que abra sin conexión.
 // Estrategia: se responde al instante con la copia guardada y, si hay señal, se actualiza
 // por detrás para la próxima visita. Al cambiar de versión, subir el número de CACHE.
-const CACHE = 'simulador-v1';
+const CACHE = 'simulador-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 

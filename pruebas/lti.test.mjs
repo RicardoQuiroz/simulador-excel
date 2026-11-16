@@ -13,33 +13,8 @@ function igual(nombre, real, esperado) {
   if (real !== esperado) { fallos++; console.log('FALLA  ' + nombre + '  esperado=' + JSON.stringify(esperado) + ' obtenido=' + JSON.stringify(real)); }
 }
 
-// ---- base de datos en memoria con la misma interfaz que db.js ----
-function memoria() {
-  const t = {};
-  const tabla = n => (t[n] = t[n] || []);
-  const cumple = (fila, f) => Object.entries(f || {}).every(([k, v]) => String(fila[k]) === String(v));
-  return {
-    tablas: t,
-    async lista(n, f, o = {}) {
-      let r = tabla(n).filter(x => cumple(x, f)).map(x => ({ ...x }));
-      if (o.orden) { const [col, dir] = o.orden.split('.'); r.sort((a, b) => (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0) * (dir === 'desc' ? -1 : 1)); }
-      return o.limite ? r.slice(0, o.limite) : r;
-    },
-    async uno(n, f) { return (await this.lista(n, f, { limite: 1 }))[0] || null; },
-    async insertar(n, filas, o = {}) {
-      const claves = o.conflicto ? o.conflicto.split(',') : ['id'];
-      for (const fila of Array.isArray(filas) ? filas : [filas]) {
-        const i = tabla(n).findIndex(x => claves.every(k => x[k] !== undefined && x[k] === fila[k]));
-        if (i < 0) tabla(n).push({ ...fila });
-        else if (o.ignorarDuplicados) continue;
-        else if (o.conflicto) tabla(n)[i] = { ...tabla(n)[i], ...fila };
-        else throw new Error('duplicado en ' + n);
-      }
-    },
-    async actualizar(n, f, c) { for (const x of tabla(n)) if (cumple(x, f)) Object.assign(x, c); },
-    async borrar(n, f) { t[n] = tabla(n).filter(x => !cumple(x, f)); }
-  };
-}
+import { crearMemoria } from './memoria.mjs';
+const memoria = () => crearMemoria({ estricta: true });
 
 // ---- Moodle simulado ----
 const MOODLE = 'https://moodle.prueba', FUNCION = 'https://proyecto.supabase.co/functions/v1/sim', APP = 'https://usuario.github.io/simulador/';
@@ -154,6 +129,7 @@ igual('recibe la configuración regional', paquete.regional.sepArg, ';');
 igual('recibe los catálogos', paquete.catalogos.politica.minimo, POLITICA.minimo);
 igual('recibe su nombre y rol', paquete.usuario.nombre + '|' + paquete.usuario.rol, 'Ana Flores|estudiante');
 igual('recibe el máximo de intentos', paquete.colocacion.maxIntentos, 3);
+igual('recibe su identificador para separar lo guardado en el dispositivo', paquete.usuario.id, db.tablas.usuarios[0].id);
 igual('el segundo enlace del mismo curso no duplica el curso', db.tablas.cursos.length, 1);
 
 // ---- 5. eventos ----
@@ -165,7 +141,6 @@ igual('eventos recibidos', (await pedir('/eventos', paseEst, { eventos: ev })).c
 await pedir('/eventos', paseEst, { eventos: ev });
 igual('reenviar los mismos eventos no los duplica', db.tablas.eventos.length, 2);
 igual('los datos del evento se conservan', db.tablas.eventos[1].datos.errorComun, 'valor-en-vez-de-formula');
-igual('se registra la presencia', db.tablas.presencia[0].paso, 'p1');
 igual('eventos sin identificador válido se descartan', (await pedir('/eventos', paseEst, { eventos: [{ id: 'x', tipo: 'a' }] })).cuerpo.recibidos, 0);
 
 // ---- 6. intentos y nota hacia Moodle ----
@@ -185,7 +160,41 @@ await pedir('/intento', paseEst, { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', m
 igual('reenviar un intento no lo duplica', db.tablas.intentos.length, 2);
 igual('la lección informa los intentos previos', (await pedir('/leccion', paseEst)).cuerpo.intentos.length, 2);
 
-// ---- 7. permisos de origen ----
+// ---- 7. seguimiento en vivo ----
+const latir = (pase, paso, estado = 'guiado') => pedir('/latido', pase, { leccion: 'L07-funcion-si', paso, estado, dispositivo: 'movil' });
+igual('el latido se acepta', (await latir(paseEst, 'p1')).cuerpo.ok, true);
+const pres = () => db.tablas.presencia.find(x => x.paso !== undefined && db.tablas.usuarios.find(u => u.id === x.usuario).sub === 'est-1');
+igual('el latido registra el paso', pres().paso, 'p1');
+igual('el latido registra el equipo', pres().dispositivo, 'movil');
+const desde1 = pres().paso_desde;
+reloj += 60000; await latir(paseEst, 'p1');
+igual('en el mismo paso no se reinicia el tiempo', pres().paso_desde, desde1);
+igual('el estudiante no ve el seguimiento', (await pedir('/monitor', paseEst)).estado, 403);
+await latir(paseDoc, 'p1'); // el docente probando no debe aparecer
+let m = (await pedir('/monitor', paseDoc)).cuerpo;
+igual('el docente ve a la estudiante conectada', m.conectados.length + '|' + m.conectados[0].nombre, '1|Ana Flores');
+igual('ve en qué paso está', m.conectados[0].pasoNumero + ' de ' + m.conectados[0].pasosTotal, '1 de ' + leccion.pasos.length);
+igual('cuenta los errores del paso actual', m.conectados[0].errores, 1);
+igual('todavía no está trabada', m.conectados[0].trabado, false);
+igual('el mapa ubica a la estudiante en el paso 1', m.actividades[0].pasos[0].personas.join(), 'Ana Flores');
+igual('el resumen cuenta los intentos terminados', m.resumen.terminados, 2);
+igual('el promedio usa solo los intentos completos', m.resumen.promedio, 100);
+igual('el resumen lista los errores frecuentes', m.resumen.errores[0].id + '|' + m.resumen.errores[0].veces, 'valor-en-vez-de-formula|1');
+reloj += 3 * 60000; await latir(paseEst, 'p1');
+m = (await pedir('/monitor', paseDoc)).cuerpo;
+igual('más de 3 minutos en el paso: aparece trabada', m.conectados[0].trabado, true);
+await latir(paseEst, 'p2');
+await pedir('/eventos', paseEst, { eventos: [{ id: '33333333-3333-4333-8333-333333333333', tipo: 'paso_completado', t: reloj, leccion: 'L07-funcion-si', paso: 'p1', errores: 2, ms: 240000 }] });
+m = (await pedir('/monitor', paseDoc)).cuerpo;
+igual('al cambiar de paso el tiempo empieza de nuevo', m.conectados[0].trabado + '|' + m.conectados[0].segundosPaso, 'false|0');
+igual('la actividad reciente muestra el paso completado', m.recientes[0].tipo + '|' + m.recientes[0].nombre, 'paso_completado|Ana Flores');
+igual('paso con errores: 0 % de acierto al primer intento', m.resumen.dificiles[0].primeraPct, 0);
+igual('los textos se piden solo al abrir', (await pedir('/monitor', paseDoc)).cuerpo.regional, undefined);
+igual('al abrir llegan los textos de la región', !!(await nucleo.atender({ metodo: 'GET', ruta: '/monitor', consulta: { textos: '1' }, auth: 'Bearer ' + paseDoc })).cuerpo.regional, true);
+reloj += 2 * 60000;
+igual('sin latidos por 2 minutos: deja de figurar conectada', (await pedir('/monitor', paseDoc)).cuerpo.conectados.length, 0);
+
+// ---- 8. permisos de origen ----
 igual('origen permitido recibe permiso', (await pedir('/leccion', paseEst, null, 'https://usuario.github.io')).cabeceras['Access-Control-Allow-Origin'], 'https://usuario.github.io');
 igual('origen extra permitido', (await pedir('/leccion', paseEst, null, 'http://localhost:8123')).cabeceras['Access-Control-Allow-Origin'], 'http://localhost:8123');
 igual('origen ajeno no recibe permiso', (await pedir('/leccion', paseEst, null, 'https://malo.example')).cabeceras['Access-Control-Allow-Origin'], undefined);

@@ -10,7 +10,14 @@ export const POLITICA = {
   minimo: 40,              // % mínimo de un paso completado
   pistaTrasErrores: [2, 3, 4], // errores que habilitan la pista 1, 2 y 3
   inactividadSeg: 60,      // segundos sin actividad antes de ofrecer una pista
-  dominio: 80              // promedio para considerar dominada la lección
+  dominio: 80,             // promedio para considerar dominada la lección
+  monitor: {               // seguimiento en vivo del docente
+    latidoSeg: 30,         // cada cuánto avisa el dispositivo dónde está el estudiante
+    conectadoSeg: 90,      // sin aviso durante este tiempo, se considera desconectado
+    atascoSeg: 180,        // tiempo en un mismo paso para marcarlo como trabado
+    atascoErrores: 4,      // errores en un mismo paso para marcarlo como trabado
+    refrescoSeg: 15        // cada cuánto se actualiza el panel del docente
+  }
 };
 
 // Mensaje cuando una regla no se cumple. {funcion} y {celda} se sustituyen.

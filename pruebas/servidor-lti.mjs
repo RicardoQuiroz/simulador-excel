@@ -19,28 +19,8 @@ const AQUI = 'http://localhost:' + PUERTO, MOODLE = AQUI + '/moodle';
 const TIPOS = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.webp': 'image/webp' };
 
-// ---- base de datos en memoria con la misma interfaz que supabase/functions/sim/db.js ----
-const tablas = {};
-const tabla = n => (tablas[n] = tablas[n] || []);
-const cumple = (fila, f) => Object.entries(f || {}).every(([k, v]) => String(fila[k]) === String(v));
-const db = {
-  async lista(n, f, o = {}) {
-    const r = tabla(n).filter(x => cumple(x, f)).map(x => ({ ...x }));
-    if (o.orden) { const [col, dir] = o.orden.split('.'); r.sort((a, b) => (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0) * (dir === 'desc' ? -1 : 1)); }
-    return o.limite ? r.slice(0, o.limite) : r;
-  },
-  async uno(n, f) { return (await this.lista(n, f, { limite: 1 }))[0] || null; },
-  async insertar(n, filas, o = {}) {
-    const claves = o.conflicto ? o.conflicto.split(',') : ['id'];
-    for (const fila of Array.isArray(filas) ? filas : [filas]) {
-      const i = tabla(n).findIndex(x => claves.every(k => x[k] !== undefined && x[k] === fila[k]));
-      if (i < 0) tabla(n).push({ ...fila });
-      else if (!o.ignorarDuplicados) tabla(n)[i] = { ...tabla(n)[i], ...fila };
-    }
-  },
-  async actualizar(n, f, c) { for (const x of tabla(n)) if (cumple(x, f)) Object.assign(x, c); },
-  async borrar(n, f) { tablas[n] = tabla(n).filter(x => !cumple(x, f)); }
-};
+import { crearMemoria } from './memoria.mjs';
+const db = crearMemoria();
 
 // ---- Moodle de mentira ----
 const llave = await generarClave();

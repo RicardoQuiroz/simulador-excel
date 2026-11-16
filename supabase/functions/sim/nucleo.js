@@ -135,7 +135,8 @@ export function crearNucleo({ db, traer = fetch, ahora = () => Date.now(), urlBa
   async function leccion(s) {
     const col = await db.uno('colocaciones', { id: s.colocacion });
     const usuario = await db.uno('usuarios', { id: s.usuario });
-    const quien = { nombre: usuario && usuario.nombre, rol: s.rol };
+    // El id sirve para que, en un celular compartido, cada persona guarde lo suyo por separado.
+    const quien = { id: s.usuario, nombre: usuario && usuario.nombre, rol: s.rol };
     if (!col.leccion) {
       if (!esDocente(s)) return { cuerpo: { pendiente: true, usuario: quien } };
       return { cuerpo: { configurar: true, usuario: quien, lecciones: await db.lista('lecciones', {}, { columnas: 'id,titulo', orden: 'id.asc' }) } };
@@ -170,10 +171,131 @@ export function crearNucleo({ db, traer = fetch, ahora = () => Date.now(), urlBa
         tipo: String(tipo || 'evento').slice(0, 40), datos, t_cliente: iso(Number(t) || ahora()), recibido: iso() };
     });
     await db.insertar('eventos', filas, { ignorarDuplicados: true });
-    const u = filas[filas.length - 1];
-    await db.insertar('presencia', { usuario: s.usuario, colocacion: s.colocacion, leccion: u.leccion, paso: u.paso, estado: u.tipo, ultimo_latido: iso() },
-      { conflicto: 'usuario,colocacion' });
     return { cuerpo: { recibidos: filas.length } };
+  }
+
+  // ------------------------------------------------------------ seguimiento en vivo
+  // Latido: el dispositivo avisa cada medio minuto (y en cada cambio de paso) dónde está.
+  async function latido(s, cuerpo) {
+    const b = cuerpo || {}, corto = (v, n) => v === undefined || v === null ? null : String(v).slice(0, n);
+    const antes = await db.uno('presencia', { usuario: s.usuario, colocacion: s.colocacion });
+    const leccion = corto(b.leccion, 80), paso = corto(b.paso, 80);
+    const mismoPaso = antes && antes.leccion === leccion && antes.paso === paso && antes.paso_desde;
+    await db.insertar('presencia', { usuario: s.usuario, colocacion: s.colocacion, leccion, paso, estado: corto(b.estado, 20),
+      dispositivo: b.dispositivo === 'movil' ? 'movil' : 'escritorio', paso_desde: mismoPaso ? antes.paso_desde : iso(), ultimo_latido: iso() },
+      { conflicto: 'usuario,colocacion' });
+    return { cuerpo: { ok: true } };
+  }
+
+  // Datos del panel del docente: quién está conectado, quién está trabado, en qué paso
+  // está cada uno, la actividad reciente y el resumen del día. El docente ve sus cursos;
+  // el propietario, todos.
+  async function monitor(s, q) {
+    exigir(esDocente(s), 403, 'Solo el docente puede ver el seguimiento');
+    const cuerpo = await datosMonitor(s, q || {});
+    // Los textos de la pantalla se piden una sola vez, al abrirla.
+    if (q && q.textos) {
+      const curso = await db.uno('cursos', { id: s.curso });
+      const region = await db.uno('config_regional', { codigo: (curso && curso.region) || 'es-MX' });
+      cuerpo.regional = region ? region.datos : null;
+    }
+    return { cuerpo };
+  }
+
+  async function datosMonitor(s, q) {
+    const pol = { conectadoSeg: 90, atascoSeg: 180, atascoErrores: 4, latidoSeg: 30,
+      ...(((await db.uno('catalogos', { clave: 'politica' })) || {}).datos || {}).monitor };
+    const t = ahora();
+    let desde = Date.parse((q && q.desde) || '');
+    if (!(desde > t - 7 * 24 * 60 * MIN && desde <= t)) desde = t - 24 * 60 * MIN;
+
+    // Cursos que puede ver esta persona.
+    let cursos;
+    if (s.rol === 'propietario') cursos = await db.lista('cursos', { plataforma: s.plataforma });
+    else {
+      const mias = (await db.lista('inscripciones', { usuario: s.usuario })).filter(i => i.rol !== 'estudiante').map(i => i.curso);
+      cursos = mias.length ? await db.lista('cursos', { id: { en: mias } }) : [];
+    }
+    const vacio = { cursos: [], actividades: [], conectados: [], recientes: [], resumen: { iniciados: 0, terminados: 0, promedio: null, dificiles: [], errores: [] }, ajustes: pol };
+    if (!cursos.length) return vacio;
+    const idsCurso = cursos.map(c => c.id);
+    const cols = await db.lista('colocaciones', { curso: { en: idsCurso } });
+    if (!cols.length) return { ...vacio, cursos: cursos.map(c => ({ id: c.id, titulo: c.titulo })) };
+    const idsCol = cols.map(c => c.id);
+    const idsLec = [...new Set(cols.map(c => c.leccion).filter(Boolean))];
+    const lecs = idsLec.length ? await db.lista('lecciones', { id: { en: idsLec } }) : [];
+    const [pres, evs, ints, ins] = await Promise.all([
+      db.lista('presencia', { colocacion: { en: idsCol }, ultimo_latido: { desde: iso(t - pol.conectadoSeg * 1000) } }),
+      db.lista('eventos', { colocacion: { en: idsCol }, t_cliente: { desde: iso(desde) } }, { orden: 't_cliente.asc', limite: 20000 }),
+      db.lista('intentos', { colocacion: { en: idsCol }, fin: { desde: iso(desde) } }),
+      db.lista('inscripciones', { curso: { en: idsCurso } })
+    ]);
+    // Solo cuentan los estudiantes: las pruebas de los docentes no ensucian el panel.
+    const noEstudiantes = new Set(ins.filter(i => i.rol !== 'estudiante').map(i => i.usuario));
+    const esEst = x => !noEstudiantes.has(x.usuario);
+    const presE = pres.filter(esEst), evsE = evs.filter(esEst), intsE = ints.filter(esEst);
+    const idsUsu = [...new Set([...presE, ...evsE].map(x => x.usuario))];
+    const usuarios = idsUsu.length ? await db.lista('usuarios', { id: { en: idsUsu } }) : [];
+    const nombre = id => ((usuarios.find(u => u.id === id) || {}).nombre) || 'Sin nombre';
+    const colDe = id => cols.find(c => c.id === id) || {};
+    const lecDe = id => lecs.find(l => l.id === id);
+    const pasosDe = id => { const l = lecDe(id); return l && Array.isArray(l.datos.pasos) ? l.datos.pasos : []; };
+    // Nombre corto de un paso: su título o, si no tiene, el comienzo de la instrucción.
+    const nombrePaso = p => { if (p.titulo) return p.titulo; const t = String(p.instruccion || p.id).split(/(?<=[.!?])\s/)[0]; return t.length > 70 ? t.slice(0, 67).trimEnd() + '…' : t; };
+    const tituloPaso = (lec, paso) => { const p = pasosDe(lec).find(x => x.id === paso); return p ? nombrePaso(p) : paso; };
+    const cursoDe = id => (cursos.find(c => c.id === id) || {}).titulo || '';
+    const ms = x => Date.parse(x);
+
+    const conectados = presE.map(p => {
+      const pasos = pasosDe(p.leccion), n = pasos.findIndex(x => x.id === p.paso);
+      const errores = evsE.filter(e => e.usuario === p.usuario && e.colocacion === p.colocacion && e.paso === p.paso && e.tipo === 'paso_intento'
+        && e.datos && e.datos.correcto === false && (!p.paso_desde || ms(e.t_cliente) >= ms(p.paso_desde))).length;
+      const seg = p.paso_desde ? Math.max(0, Math.round((t - ms(p.paso_desde)) / 1000)) : null;
+      const trabado = p.estado === 'guiado' && ((seg !== null && seg >= pol.atascoSeg) || errores >= pol.atascoErrores);
+      return { usuario: p.usuario, nombre: nombre(p.usuario), actividad: p.colocacion, curso: cursoDe(colDe(p.colocacion).curso),
+        leccion: (lecDe(p.leccion) || {}).titulo || p.leccion, paso: p.paso, pasoTitulo: p.paso ? tituloPaso(p.leccion, p.paso) : null,
+        pasoNumero: n >= 0 ? n + 1 : null, pasosTotal: pasos.length, estado: p.estado, dispositivo: p.dispositivo,
+        segundosPaso: seg, errores, trabado, ultimo: p.ultimo_latido };
+    }).sort((a, b) => (b.trabado - a.trabado) || a.nombre.localeCompare(b.nombre));
+
+    // Mapa: cuántos conectados hay en cada paso de cada actividad.
+    const actividades = cols.filter(c => c.leccion).map(c => {
+      const aqui = conectados.filter(x => x.actividad === c.id);
+      return { id: c.id, titulo: c.titulo, curso: cursoDe(c.curso), leccion: (lecDe(c.leccion) || {}).titulo || c.leccion,
+        conectados: aqui.length,
+        pasos: pasosDe(c.leccion).map((p, i) => ({ numero: i + 1, titulo: nombrePaso(p),
+          personas: aqui.filter(x => x.paso === p.id && ['guiado', 'checkpoint', 'pausa', 'microdemo'].includes(x.estado)).map(x => x.nombre) })),
+        fuera: aqui.filter(x => !['guiado', 'checkpoint', 'pausa', 'microdemo'].includes(x.estado)).map(x => ({ nombre: x.nombre, estado: x.estado })) };
+    }).filter(a => a.conectados || evsE.some(e => e.colocacion === a.id));
+
+    const VISIBLES = ['leccion_inicio', 'paso_completado', 'pista_solicitada', 'muestrame', 'checkpoint_respuesta', 'intento_fin'];
+    const recientes = evsE.filter(e => VISIBLES.includes(e.tipo)).slice(-40).reverse().map(e => ({
+      t: e.t_cliente, nombre: nombre(e.usuario), tipo: e.tipo, actividad: colDe(e.colocacion).titulo,
+      paso: e.paso ? tituloPaso(e.leccion, e.paso) : null, datos: e.datos || {} }));
+
+    // Resumen: dificultad de cada paso = cuántos lo lograron al primer intento, sin pistas.
+    const porPaso = new Map();
+    for (const e of evsE.filter(x => x.tipo === 'paso_completado')) {
+      const k = e.leccion + '|' + e.paso, d = e.datos || {};
+      const v = porPaso.get(k) || { leccion: (lecDe(e.leccion) || {}).titulo || e.leccion, paso: tituloPaso(e.leccion, e.paso), veces: 0, primera: 0, ms: [] };
+      v.veces++; if (!d.errores && !d.pista && !d.muestrame) v.primera++; if (d.ms) v.ms.push(d.ms);
+      porPaso.set(k, v);
+    }
+    const mediana = a => { if (!a.length) return null; const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
+    const dificiles = [...porPaso.values()].map(v => ({ leccion: v.leccion, paso: v.paso, veces: v.veces,
+      primeraPct: Math.round(100 * v.primera / v.veces), segundos: v.ms.length ? Math.round(mediana(v.ms) / 1000) : null }))
+      .sort((a, b) => a.primeraPct - b.primeraPct || b.veces - a.veces).slice(0, 5);
+    const cuenta = new Map();
+    for (const e of evsE) if (e.tipo === 'paso_intento' && e.datos && e.datos.errorComun) cuenta.set(e.datos.errorComun, (cuenta.get(e.datos.errorComun) || 0) + 1);
+    const textos = ((await db.uno('catalogos', { clave: 'errores_comunes' })) || {}).datos || {};
+    const errores = [...cuenta].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, veces]) => ({ id, texto: textos[id] || id, veces }));
+    const notas = intsE.filter(x => x.completo).map(x => Number(x.nota));
+
+    return {
+      cursos: cursos.map(c => ({ id: c.id, titulo: c.titulo })), actividades, conectados, recientes, ajustes: pol,
+      resumen: { iniciados: evsE.filter(e => e.tipo === 'leccion_inicio').length, terminados: intsE.length,
+        promedio: notas.length ? Math.round(notas.reduce((a, b) => a + b, 0) / notas.length) : null, dificiles, errores }
+    };
   }
 
   // La nota se vuelve a calcular aquí con las reglas guardadas, no se confía en la que envía el dispositivo.
@@ -258,6 +380,8 @@ export function crearNucleo({ db, traer = fetch, ahora = () => Date.now(), urlBa
         case '/colocacion': r = await configurar(await sesionDe(pedido.auth), pedido.cuerpo); break;
         case '/eventos': r = await eventos(await sesionDe(pedido.auth), pedido.cuerpo); break;
         case '/intento': r = await intento(await sesionDe(pedido.auth), pedido.cuerpo); break;
+        case '/latido': r = await latido(await sesionDe(pedido.auth), pedido.cuerpo); break;
+        case '/monitor': r = await monitor(await sesionDe(pedido.auth), pedido.consulta); break;
         default: throw new Fallo(404, 'Ruta desconocida');
       }
       return { estado: r.estado || (r.redirigir ? 302 : 200), cabeceras, ...r };

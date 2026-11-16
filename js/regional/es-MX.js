@@ -152,7 +152,51 @@ export default {
       notaIntento: 'Nota de este intento', promedio: 'Promedio de tus intentos ({n})',
       dominada: 'Lección dominada', porDominar: 'Necesitas un promedio de {n} para dominarla',
       repetir: 'Repetir la práctica',
-      colErrores: 'Errores', colPistas: 'Pistas', colPuntos: 'Puntos'
+      colErrores: 'Errores', colPistas: 'Pistas', colPuntos: 'Puntos',
+      privacidad: 'Este simulador registra tu avance para ayudarte a mejorar y para informar a tu docente. No registra lo que haces fuera de esta práctica.',
+      entendido: 'Entendido',
+      abrirMonitor: 'Seguimiento en vivo'
+    },
+    monitor: {
+      titulo: 'Seguimiento en vivo',
+      volver: 'Volver a la lección',
+      actualizado: 'Actualizado a las {hora}. Se actualiza solo cada {n} segundos.',
+      sinConexion: 'No se pudo actualizar. Se vuelve a intentar en unos segundos.',
+      soloDocente: 'Esta pantalla es solo para docentes. Ábrela desde una actividad del simulador en tu curso.',
+      sinSesion: 'Para ver esta pantalla, abre una actividad del simulador desde tu curso y pulsa "Seguimiento en vivo".',
+      conectados: 'Conectados ahora ({n})',
+      ningunConectado: 'En este momento no hay estudiantes haciendo una práctica.',
+      trabados: 'Necesitan ayuda ({n})',
+      ningunTrabado: 'Nadie parece trabado.',
+      trabadoPor: 'Lleva {t} en el paso {p} con {e} errores.',
+      mapa: 'Mapa de la lección',
+      mapaAyuda: 'Cuántos estudiantes hay ahora en cada paso.',
+      fueraDePasos: 'Fuera de los pasos',
+      recientes: 'Actividad reciente',
+      sinRecientes: 'Todavía no hay actividad hoy.',
+      resumen: 'Resumen de hoy',
+      iniciados: 'Prácticas empezadas', terminados: 'Prácticas terminadas', promedio: 'Nota promedio',
+      dificiles: 'Pasos más difíciles',
+      dificilesAyuda: 'Porcentaje de estudiantes que acertaron el paso al primer intento y sin pistas. Cuanto más bajo, más difícil.',
+      erroresFrecuentes: 'Errores más frecuentes',
+      erroresAyuda: 'Lo que conviene reforzar en clase.',
+      nadaAun: 'Sin datos todavía.',
+      veces: '{n} veces', unaVez: '1 vez',
+      columnas: { nombre: 'Estudiante', actividad: 'Actividad', paso: 'Paso', tiempo: 'Tiempo en el paso', errores: 'Errores', equipo: 'Equipo' },
+      pasoDe: '{n} de {total}',
+      equipo: { movil: 'Celular', escritorio: 'Computadora' },
+      estados: {
+        intro: 'En la portada', cargando: 'Cargando', guiado: 'Haciendo los pasos', checkpoint: 'Respondiendo una pregunta',
+        pausa: 'En una pausa', microdemo: 'Mirando cómo se hace', demo: 'Mirando la demostración', resumen: 'Terminó la práctica',
+        libre: 'Práctica libre', grabando: 'Grabando', grabado: 'Revisando una grabación'
+      },
+      eventos: {
+        leccion_inicio: 'empezó la práctica', paso_completado: 'completó el paso «{p}»',
+        pista_solicitada: 'pidió una pista en «{p}»', muestrame: 'usó «Muéstrame» en «{p}»',
+        checkpoint_respuesta: 'respondió una pregunta de control', checkpoint_bien: 'acertó una pregunta de control',
+        intento_fin: 'terminó con nota {nota}'
+      },
+      minutos: '{m} min {s} s', segundos: '{s} s'
     },
     errFormula: {
       sintaxis: 'Hay un problema con esta fórmula. Revisa que esté bien escrita.',

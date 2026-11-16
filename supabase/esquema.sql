@@ -166,6 +166,11 @@ create table if not exists presencia (
   ultimo_latido timestamptz not null default now(),
   primary key (usuario, colocacion)
 );
+-- Fase 6: tipo de dispositivo y desde cuándo está en el paso actual.
+alter table presencia add column if not exists dispositivo text;
+alter table presencia add column if not exists paso_desde timestamptz;
+create index if not exists eventos_tiempo on eventos (colocacion, t_cliente);
+create index if not exists intentos_fin on intentos (colocacion, fin);
 
 -- Seguridad por filas activada y sin reglas: cerrado para todos salvo el servidor.
 do $$

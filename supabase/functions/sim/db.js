@@ -3,7 +3,13 @@
 
 export function crearDb(url, llave, traer = fetch) {
   const cab = { apikey: llave, Authorization: 'Bearer ' + llave, 'Content-Type': 'application/json' };
-  const filtro = f => Object.entries(f || {}).map(([k, v]) => k + '=eq.' + encodeURIComponent(v));
+  // Un filtro es { columna: valor } (igual a), { columna: { desde: v } } (mayor o igual)
+  // o { columna: { en: [a, b] } } (cualquiera de la lista).
+  const filtro = f => Object.entries(f || {}).map(([k, v]) => {
+    if (v && typeof v === 'object' && 'desde' in v) return k + '=gte.' + encodeURIComponent(v.desde);
+    if (v && typeof v === 'object' && 'en' in v) return k + '=in.(' + v.en.map(x => encodeURIComponent('"' + String(x).replace(/"/g, '') + '"')).join(',') + ')';
+    return k + '=eq.' + encodeURIComponent(v);
+  });
 
   async function pedir(ruta, opc = {}) {
     const r = await traer(url + '/rest/v1/' + ruta, { ...opc, headers: { ...cab, ...(opc.headers || {}) } });
@@ -13,11 +19,18 @@ export function crearDb(url, llave, traer = fetch) {
   }
 
   return {
-    lista(tabla, f, o = {}) {
+    // Supabase entrega como máximo 1000 filas por pedido: las listas largas se piden por partes.
+    async lista(tabla, f, o = {}) {
       const q = [...filtro(f), 'select=' + (o.columnas || '*')];
       if (o.orden) q.push('order=' + o.orden);
-      if (o.limite) q.push('limit=' + o.limite);
-      return pedir(tabla + '?' + q.join('&'));
+      const PARTE = 1000, limite = o.limite || Infinity, filas = [];
+      while (filas.length < limite) {
+        const pide = Math.min(PARTE, limite - filas.length);
+        const r = await pedir(tabla + '?' + [...q, 'limit=' + pide, 'offset=' + filas.length].join('&'));
+        filas.push(...r);
+        if (r.length < pide) break;
+      }
+      return filas;
     },
     async uno(tabla, f) { return (await this.lista(tabla, f, { limite: 1 }))[0] || null; },
     // o.conflicto: columnas de la clave única; si existe la fila, se actualiza.
