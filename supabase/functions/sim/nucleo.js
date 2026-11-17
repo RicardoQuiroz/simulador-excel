@@ -13,7 +13,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 class Fallo extends Error { constructor(estado, mensaje) { super(mensaje); this.estado = estado; } }
 const exigir = (cond, estado, mensaje) => { if (!cond) throw new Fallo(estado, mensaje); };
 
-export function crearNucleo({ db, traer = fetch, ahora = () => Date.now(), urlBase }) {
+export function crearNucleo({ db, traer = fetch, ahora = () => Date.now(), urlBase, ia = null }) {
   const iso = (ms = ahora()) => new Date(ms).toISOString();
   const ajuste = async clave => { const r = await db.uno('ajustes', { clave }); return r ? r.valor : null; };
 
@@ -156,8 +156,10 @@ export function crearNucleo({ db, traer = fetch, ahora = () => Date.now(), urlBa
   async function configurar(s, cuerpo) {
     exigir(esDocente(s), 403, 'Solo el docente puede elegir la lección');
     exigir(cuerpo && await db.uno('lecciones', { id: cuerpo.leccion }), 400, 'Esa lección no existe');
-    const max = Number.isInteger(cuerpo.maxIntentos) && cuerpo.maxIntentos > 0 ? cuerpo.maxIntentos : null;
-    await db.actualizar('colocaciones', { id: s.colocacion }, { leccion: cuerpo.leccion, max_intentos: max });
+    const cambios = { leccion: cuerpo.leccion };
+    // Sin "maxIntentos" (por ejemplo, desde el editor) se conserva el límite que ya tenía.
+    if (cuerpo.maxIntentos !== undefined) cambios.max_intentos = Number.isInteger(cuerpo.maxIntentos) && cuerpo.maxIntentos > 0 ? cuerpo.maxIntentos : null;
+    await db.actualizar('colocaciones', { id: s.colocacion }, cambios);
     return { cuerpo: { ok: true } };
   }
 
@@ -355,6 +357,128 @@ export function crearNucleo({ db, traer = fetch, ahora = () => Date.now(), urlBa
     if (!r2.ok) throw new Error('El LMS no aceptó la nota (' + r2.status + ')');
   }
 
+  // ------------------------------------------------------------ editor de lecciones
+  // Los docentes crean y cambian lecciones desde el editor. Cada lección recuerda quién la
+  // creó: solo esa persona (o el propietario) puede cambiarla; los demás guardan una copia.
+  const puedeEditar = (s, fila) => s.rol === 'propietario' || (!!fila.autor && fila.autor === s.usuario);
+
+  async function editor(s, q) {
+    exigir(esDocente(s), 403, 'Solo los docentes pueden usar el editor de lecciones');
+    const filas = await db.lista('lecciones', {}, { columnas: 'id,titulo,autor,actualizada', orden: 'titulo.asc' });
+    const ids = [...new Set(filas.map(f => f.autor).filter(Boolean))];
+    const autores = ids.length ? await db.lista('usuarios', { id: { en: ids } }) : [];
+    const cuerpo = {
+      lecciones: filas.map(f => ({ id: f.id, titulo: f.titulo, actualizada: f.actualizada,
+        autor: f.autor ? ((autores.find(u => u.id === f.autor) || {}).nombre || null) : null,
+        propia: f.autor === s.usuario, editable: puedeEditar(s, f) })),
+      asistente: !!ia,
+      actividad: { leccion: ((await db.uno('colocaciones', { id: s.colocacion })) || {}).leccion || null }
+    };
+    if (q && q.textos) {
+      const curso = await db.uno('cursos', { id: s.curso });
+      const region = await db.uno('config_regional', { codigo: (curso && curso.region) || 'es-MX' });
+      cuerpo.regional = region ? region.datos : null;
+      cuerpo.catalogos = await catalogos();
+    }
+    return { cuerpo };
+  }
+
+  async function verLeccion(s, q) {
+    exigir(esDocente(s), 403, 'Solo los docentes pueden usar el editor de lecciones');
+    const fila = q && q.id && await db.uno('lecciones', { id: String(q.id) });
+    exigir(fila, 404, 'Esa lección no existe');
+    return { cuerpo: { leccion: fila.datos, editable: puedeEditar(s, fila) } };
+  }
+
+  const slug = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'leccion';
+
+  async function guardarLeccion(s, cuerpo) {
+    exigir(esDocente(s), 403, 'Solo los docentes pueden guardar lecciones');
+    const d = cuerpo && cuerpo.leccion;
+    exigir(d && typeof d === 'object' && !Array.isArray(d), 400, 'Falta la lección');
+    exigir(JSON.stringify(d).length <= 400000, 400, 'La lección es demasiado grande');
+    exigir(d.identidad && String(d.identidad.titulo || '').trim(), 400, 'La lección necesita un título');
+    exigir(Array.isArray(d.pasos) && d.pasos.length, 400, 'La lección necesita al menos un paso');
+    exigir(d.libroInicial && Array.isArray(d.libroInicial.hojas) && d.libroInicial.hojas.length, 400, 'La lección necesita una hoja inicial');
+    for (const k of Object.keys(d)) if (k.startsWith('_')) delete d[k]; // datos de trabajo del editor
+    let id = String(d.identidad.id || '');
+    const antes = !cuerpo.copia && id && id.length <= 80 ? await db.uno('lecciones', { id }) : null;
+    if (antes) exigir(puedeEditar(s, antes), 403, 'Solo quien creó esta lección puede cambiarla. Guarda una copia.');
+    else { // lección nueva o copia: se le da un identificador nuevo
+      do { id = slug(d.identidad.titulo) + '-' + aleatorio(4).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 4); } while (await db.uno('lecciones', { id }));
+    }
+    d.identidad = { ...d.identidad, id, version: ((antes && antes.datos.identidad && antes.datos.identidad.version) || 0) + 1 };
+    const titulo = String(d.identidad.titulo).trim().slice(0, 200);
+    await db.insertar('lecciones', { id, titulo, datos: d, autor: antes ? antes.autor : s.usuario, actualizada: iso() }, { conflicto: 'id' });
+    return { cuerpo: { id, version: d.identidad.version } };
+  }
+
+  // ------------------------------------------------------------ asistente (Claude)
+  // Crea una lección a partir de una descripción, o ajusta una lección según un pedido.
+  // La clave de la API vive solo en el servidor; aquí se recibe ya lista la función "ia".
+  const REGLAS_IA = `Eres el asistente del editor de lecciones de un simulador de Excel en español para estudiantes adultos de zonas rurales de Bolivia que practican desde el celular.
+Tu tarea es producir UNA lección completa en formato JSON, con la misma estructura que el ejemplo que se te da.
+
+Reglas obligatorias:
+- Responde solo con el objeto JSON de la lección, sin texto antes ni después y sin bloques de código.
+- Todos los textos para el estudiante van en español sencillo, frases cortas, trato de "tú".
+- Las fórmulas dentro de las reglas ("referencia", "referenciaPrimeraFila") se escriben en formato interno: nombres de función en inglés (SUM, IF, AVERAGE...), coma como separador de argumentos, punto decimal y sin el signo = inicial. Ejemplo: IF(C2>B2,"Excedido","Dentro del plan").
+- En las pistas y las instrucciones que ve el estudiante, las fórmulas se escriben como en Excel en español: =SI(C2>B2;"Excedido";"Dentro del plan").
+- Solo se pueden usar estas funciones: {funciones}.
+- La hoja tiene como máximo las columnas A a Z y las filas 1 a 200. Usa pocas filas (entre 5 y 15 datos) para que se vea bien en un celular.
+- Cada paso tiene: id único (p1, p2...), instruccion, resaltar ("celda:D2" o "rango:D2:D6"), puntos, validar {combinar:"todas", reglas:[...]}, exactamente 3 pistas (recordatorio, dónde, cómo), erroresComunes y alCompletar {sonido:"correcto"}.
+- Tipos de regla permitidos y sus datos:
+  valor_celda {celda, valor}; es_formula {celda}; usa_funcion {celda, funcion}; no_usa_funcion {celda, funcion};
+  referencia {celda, a, modo: "absoluta"|"relativa"|"mixta"}; usa_rango {celda, rango}; usa_nombre {celda, nombre};
+  formula_equivalente {celda, referencia}; rango_relleno {rango, referenciaPrimeraFila}; formato {rango, fmt};
+  seleccion {rango}; nombre_definido {nombre, rango}; hoja {nombre}.
+- Para revisar una fórmula usa siempre es_formula + formula_equivalente (y usa_funcion si el paso enseña una función). Para fórmulas copiadas hacia abajo usa rango_relleno sobre las celdas copiadas (sin la primera).
+- Errores comunes disponibles (se escriben como {"error": "clave"}): {errores}.
+- interfaz.celdasEditables debe incluir todas las celdas que el estudiante cambia.
+- Los formatos de celda (fmt) usan: negrita, cursiva, subrayado (true), color y relleno ("#RRGGBB"), alinH ("izq"|"centro"|"der"), num ("numero"|"moneda"|"porcentaje"|"fecha"|"texto"), dec (número de decimales), miles (true).
+- Incluye entre 1 y 2 preguntas de control (checkpoints de tipo "pregunta") con 3 opciones, una sola correcta, y una explicación por opción.
+- No incluyas "demo" (la demostración la graba el docente) ni "datosVariables".
+- Deja "identidad.id" vacío.`;
+
+  async function asistente(s, cuerpo) {
+    exigir(esDocente(s), 403, 'Solo los docentes pueden usar el asistente');
+    exigir(ia, 503, 'El asistente todavía no está activado en el servidor');
+    const b = cuerpo || {};
+    const pedido = String(b.pedido || '').trim();
+    exigir(pedido.length >= 5 && pedido.length <= 4000, 400, 'Escribe qué quieres en pocas frases');
+    exigir(b.modo === 'crear' || (b.modo === 'ajustar' && b.leccion && typeof b.leccion === 'object'), 400, 'Pedido incompleto');
+    exigir(!b.leccion || JSON.stringify(b.leccion).length <= 200000, 400, 'La lección es demasiado grande');
+
+    // Tope de usos por día para cada docente: cada uso tiene un costo.
+    const limite = Number(await ajuste('ia_limite_diario')) || 40;
+    const usos = (await db.lista('eventos', { usuario: s.usuario, tipo: 'asistente', recibido: { desde: iso(ahora() - 24 * 60 * MIN) } }, { columnas: 'id' })).length;
+    exigir(usos < limite, 429, 'Ya usaste el asistente ' + limite + ' veces en las últimas 24 horas. Vuelve a intentarlo mañana.');
+
+    const ejemplo = await db.uno('lecciones', { id: (await ajuste('ia_leccion_ejemplo')) || 'L07-funcion-si' });
+    const errores = Object.keys(((await db.uno('catalogos', { clave: 'errores_comunes' })) || {}).datos || {}).join(', ');
+    const funciones = Array.isArray(b.funciones) ? b.funciones.filter(f => /^[A-Z][A-Z0-9.]{0,30}$/.test(f)).slice(0, 200).join(', ') : 'SUM, AVERAGE, MIN, MAX, COUNT, IF, ROUND';
+    const sistema = REGLAS_IA.replace('{funciones}', funciones).replace('{errores}', errores)
+      + (ejemplo ? '\n\nLección de ejemplo (estructura a imitar):\n' + JSON.stringify(ejemplo.datos) : '');
+    const texto = b.modo === 'crear'
+      ? 'El docente describe la lección que quiere:\n\n' + pedido
+      : 'Esta es la lección actual:\n\n' + JSON.stringify(b.leccion) + '\n\nEl docente pide este cambio:\n\n' + pedido + '\n\nDevuelve la lección completa ya modificada. Conserva todo lo que el pedido no menciona.';
+
+    await db.insertar('eventos', { id: crypto.randomUUID(), usuario: s.usuario, colocacion: s.colocacion, tipo: 'asistente',
+      datos: { modo: b.modo }, t_cliente: iso(), recibido: iso() });
+    let r;
+    try {
+      r = await ia({ sistema, texto, modelo: (await ajuste('ia_modelo')) || 'claude-opus-5-5', esfuerzo: (await ajuste('ia_esfuerzo')) || 'medium' });
+    } catch (e) { throw new Fallo(502, 'El asistente no respondió. Inténtalo de nuevo en un momento.'); }
+    exigir(r && r.motivo !== 'refusal', 422, 'El asistente no pudo atender este pedido. Prueba a describirlo de otra forma.');
+    exigir(r.motivo !== 'max_tokens', 422, 'La lección pedida es demasiado larga. Pide menos pasos.');
+    const t = String(r.texto || ''), i = t.indexOf('{'), j = t.lastIndexOf('}');
+    let leccion = null;
+    try { leccion = JSON.parse(t.slice(i, j + 1)); } catch (_) { leccion = null; }
+    exigir(leccion && typeof leccion === 'object' && Array.isArray(leccion.pasos), 422, 'La respuesta del asistente no se pudo leer. Inténtalo de nuevo.');
+    if (b.modo === 'ajustar' && b.leccion.identidad) leccion.identidad = { ...leccion.identidad, id: b.leccion.identidad.id, version: b.leccion.identidad.version };
+    return { cuerpo: { leccion, modelo: r.modelo || null } };
+  }
+
   // ------------------------------------------------------------ entrada única
   // pedido = { metodo, ruta, consulta, cuerpo, auth, origen }
   async function atender(pedido) {
@@ -382,6 +506,10 @@ export function crearNucleo({ db, traer = fetch, ahora = () => Date.now(), urlBa
         case '/intento': r = await intento(await sesionDe(pedido.auth), pedido.cuerpo); break;
         case '/latido': r = await latido(await sesionDe(pedido.auth), pedido.cuerpo); break;
         case '/monitor': r = await monitor(await sesionDe(pedido.auth), pedido.consulta); break;
+        case '/editor': r = await editor(await sesionDe(pedido.auth), pedido.consulta); break;
+        case '/editor/leccion': r = await verLeccion(await sesionDe(pedido.auth), pedido.consulta); break;
+        case '/editor/guardar': r = await guardarLeccion(await sesionDe(pedido.auth), pedido.cuerpo); break;
+        case '/editor/asistente': r = await asistente(await sesionDe(pedido.auth), pedido.cuerpo); break;
         default: throw new Fallo(404, 'Ruta desconocida');
       }
       return { estado: r.estado || (r.redirigir ? 302 : 200), cabeceras, ...r };

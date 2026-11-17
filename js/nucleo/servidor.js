@@ -29,7 +29,12 @@ export async function conectar(base) {
       body: cuerpo ? JSON.stringify(cuerpo) : undefined
     });
     if (r.status === 401) { guardar(null); throw new SesionTerminada(); }
-    if (!r.ok) throw new Error('Servidor: ' + r.status);
+    if (!r.ok) {
+      const e = new Error('Servidor: ' + r.status);
+      e.estado = r.status;
+      try { e.mensaje = (await r.json()).error || null; } catch (_) { e.mensaje = null; }
+      throw e;
+    }
     return r.json();
   }
   return { api };

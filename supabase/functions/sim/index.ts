@@ -13,9 +13,33 @@ function llaveServicio(): string {
   if (vieja) return vieja;
   try { return String(Object.values(JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}'))[0] || ''); } catch (_) { return ''; }
 }
+// Asistente del editor de lecciones. Se activa solo si existe el secreto ANTHROPIC_API_KEY
+// en la configuración de las funciones de Supabase. El modelo y el esfuerzo se eligen en la
+// tabla "ajustes" (ia_modelo, ia_esfuerzo).
+let ia = null;
+if (Deno.env.get('ANTHROPIC_API_KEY')) {
+  const { default: Anthropic } = await import('npm:@anthropic-ai/sdk');
+  const cliente = new Anthropic();
+  ia = async ({ sistema, texto, modelo, esfuerzo }: { sistema: string; texto: string; modelo: string; esfuerzo: string }) => {
+    const flujo = cliente.beta.messages.stream({
+      model: modelo,
+      max_tokens: 32000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default', // si el modelo declina el pedido, el servidor de Anthropic prueba con otro
+      output_config: { effort: esfuerzo },
+      system: sistema,
+      messages: [{ role: 'user', content: texto }]
+    } as any);
+    const m: any = await flujo.finalMessage();
+    const t = (m.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
+    return { texto: t, motivo: m.stop_reason, modelo: m.model };
+  };
+}
+
 const nucleo = crearNucleo({
   db: crearDb(SUPABASE_URL, llaveServicio()),
-  urlBase: SUPABASE_URL + '/functions/v1/sim'
+  urlBase: SUPABASE_URL + '/functions/v1/sim',
+  ia
 });
 
 Deno.serve(async (req: Request) => {

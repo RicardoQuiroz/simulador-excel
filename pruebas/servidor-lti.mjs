@@ -32,7 +32,16 @@ async function traer(url, opc = {}) {
   if (url.startsWith(MOODLE + '/notas/')) { notas.push({ actividad: url.split('/notas/')[1].split('/')[0], ...JSON.parse(opc.body) }); return ok({}); }
   return ok({}, 404);
 }
-const nucleo = crearNucleo({ db, traer, urlBase: AQUI + '/sim' });
+// Asistente de mentira para ensayar el editor sin gastar: con --ia-falsa devuelve la lección
+// de ejemplo con el título cambiado (o la misma lección recibida, si es un ajuste).
+const iaFalsa = process.env.SIM_IA === 'falsa' || process.argv.includes('--ia-falsa') ? async ({ texto }) => {
+  await new Promise(r => setTimeout(r, 1500));
+  const m = /lección actual:\n\n(\{[\s\S]*\})\n\nEl docente pide/.exec(texto);
+  const l = m ? JSON.parse(m[1]) : JSON.parse(await readFile(join(RAIZ, 'lecciones', 'ejemplo-funcion-si.json'), 'utf8'));
+  l.identidad.titulo = (m ? l.identidad.titulo : 'Propuesta del asistente') + ' (ensayo)';
+  return { texto: JSON.stringify(l), motivo: 'end_turn', modelo: 'ensayo' };
+} : null;
+const nucleo = crearNucleo({ db, traer, urlBase: AQUI + '/sim', ia: iaFalsa });
 
 const PERSONAS = { ana: ['Ana Flores', 'Learner'], luis: ['Luis Mamani', 'Learner'], docente: ['Docente de prueba', 'Instructor'] };
 const leccion = JSON.parse(await readFile(join(RAIZ, 'lecciones', 'ejemplo-funcion-si.json'), 'utf8'));

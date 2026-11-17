@@ -118,3 +118,12 @@
 .privacidad { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 96; width: min(520px, calc(100% - 24px)); background: #fff; border: 1px solid var(--borde); border-left: 5px solid var(--verde); border-radius: 8px; padding: 12px 14px; box-shadow: 0 8px 26px rgba(0,0,0,.25); font: 13.5px/1.45 var(--fuente-ui); display: flex; gap: 12px; align-items: center; }
 .privacidad p { margin: 0; flex: 1; }
 .privacidad button { padding: 8px 14px; min-height: 40px; border-radius: 5px; border: 1px solid var(--verde); background: var(--verde); color: #fff; font-weight: 600; cursor: pointer; }
+/* Vista previa desde el editor de lecciones */
+.previa-barra { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); z-index: 97; width: min(640px, calc(100% - 24px)); background: #fff8e1; border: 1px solid #e0b000; border-radius: 8px; padding: 8px 12px; box-shadow: 0 4px 14px rgba(0,0,0,.18); font: 13px/1.4 var(--fuente-ui); display: flex; gap: 10px; align-items: center; }
+.previa-barra span { flex: 1; }
+@media (max-width: 600px) { /* en el celular no tapa el menú: queda como etiqueta en la esquina */
+  .previa-barra { left: auto; right: 6px; top: 4px; transform: none; width: auto; padding: 3px; }
+  .previa-barra span { display: none; }
+  .previa-barra button { min-height: 32px; padding: 4px 10px; }
+}
+.previa-barra button { padding: 6px 12px; min-height: 36px; border-radius: 5px; border: 1px solid #8a6d00; background: #fff; font-weight: 600; cursor: pointer; white-space: nowrap; }

@@ -55,7 +55,7 @@ export function crearPanel(panel, capa, lec, reg, opciones = {}) {
           <input class="g-nota" data-k="${s.grabacion.length}" placeholder="${esc(T.grabNotaFinal)}" value="${esc(notas[s.grabacion.length] || '')}"></div>
         <div class="p-acciones">
           <button data-a="g-probar" class="principal">${esc(T.grabProbar)}</button>
-          <button data-a="g-copiar">${esc(T.grabCopiar)}</button>
+          ${opciones.alGuardarDemo ? `<button data-a="g-guardar" class="principal">${esc(T.grabGuardar)}</button>` : `<button data-a="g-copiar">${esc(T.grabCopiar)}</button>`}
           ${textoGuion ? `<textarea class="g-json" readonly rows="6">${esc(textoGuion)}</textarea>` : ''}
           <button data-a="g-grabar" class="secundario">${esc(T.grabOtraVez)}</button>
           <button data-a="intro" class="secundario">${esc(T.demoSalir)}</button>
@@ -110,7 +110,7 @@ export function crearPanel(panel, capa, lec, reg, opciones = {}) {
   function tarjetaIntro(s) {
     const P = L.pedagogia || {};
     return `<h1>${esc(L.identidad.titulo)}</h1>
-      ${P.objetivos ? `<p class="t-sub">${esc(T.objetivos)}</p><ul>${P.objetivos.map(o => `<li>${esc(o)}</li>`).join('')}</ul>` : ''}
+      ${P.objetivos && P.objetivos.length ? `<p class="t-sub">${esc(T.objetivos)}</p><ul>${P.objetivos.map(o => `<li>${esc(o)}</li>`).join('')}</ul>` : ''}
       ${L.identidad.duracionMin ? `<p class="t-nota">${esc(T.duracion.replace('{n}', L.identidad.duracionMin))}</p>` : ''}
       <p class="t-nota">${esc(T.avisoNota)}${s.promedio !== null ? ' ' + esc(T.promedio.replace('{n}', s.intentos.length)) + ': <b>' + s.promedio + '</b>' : ''}</p>
       <div class="t-botones">
@@ -120,7 +120,7 @@ export function crearPanel(panel, capa, lec, reg, opciones = {}) {
         ${L.reto && L.modos && L.modos.reto ? `<button data-a="reto">${esc(T.reto)}</button>` : ''}
         ${!L.modos || L.modos.libre ? `<button data-a="libre">${esc(T.libre)}</button>` : ''}
       </div>
-      ${opciones.docente ? `<div class="t-docente"><button data-a="g-grabar">● ${esc(T.grabIniciar)}</button>${opciones.alConfigurar ? ` <button data-a="configurar">${esc(T.cambiarLeccion)}</button>` : ''}${opciones.alMonitor ? ` <button data-a="monitor">${esc(T.abrirMonitor)}</button>` : ''}</div>` : ''}`;
+      ${opciones.docente ? `<div class="t-docente"><button data-a="g-grabar">● ${esc(T.grabIniciar)}</button>${opciones.alConfigurar ? ` <button data-a="configurar">${esc(T.cambiarLeccion)}</button>` : ''}${opciones.alMonitor ? ` <button data-a="monitor">${esc(T.abrirMonitor)}</button>` : ''}${opciones.alEditor ? ` <button data-a="editor">${esc(T.abrirEditor)}</button>` : ''}</div>` : ''}`;
   }
 
   function tarjetaCheckpoint(s) {
@@ -225,6 +225,8 @@ export function crearPanel(panel, capa, lec, reg, opciones = {}) {
       case 'demo': lec.demo(); break;
       case 'configurar': opciones.alConfigurar(); break;
       case 'monitor': opciones.alMonitor(); break;
+      case 'editor': opciones.alEditor(); break;
+      case 'g-guardar': opciones.alGuardarDemo(componer(lec.estado())); break;
       case 'd-alternar': R.alternar(); break;
       case 'd-anterior': R.anterior(); break;
       case 'd-siguiente': R.siguiente(); break;

@@ -2,7 +2,7 @@
 // Estrategia: si hay señal, se usa la versión publicada (así cada cambio llega en la
 // primera visita) y se guarda una copia. Si no hay señal o tarda más de ESPERA, se usa
 // la copia guardada. Al cambiar de versión, subir el número de CACHE.
-const CACHE = 'simulador-v5';
+const CACHE = 'simulador-v6';
 const ESPERA = 4000; // milisegundos
 
 self.addEventListener('install', () => self.skipWaiting());

@@ -37,16 +37,23 @@ const base = local ? location.origin + '/sim' : config.servidor;
 let srv = null, remoto = null, problema = null;
 try { if (base) srv = await conectar(base); } catch (e) { problema = e instanceof SesionTerminada ? 'sesionTerminada' : 'sinServidor'; }
 
+// Vista previa desde el editor de lecciones: la lección llega en la memoria de esta pestaña.
+// No se pide nada al servidor ni se guarda ningún avance.
+let previa = null;
+if (location.hash.includes('previa')) { try { previa = JSON.parse(sessionStorage.getItem('simulador:previa')); } catch (_) { previa = null; } }
+const regPrevia = previa && (() => { try { return JSON.parse(sessionStorage.getItem('simulador:previa-regional')); } catch (_) { return null; } })();
+
 const copia = crearAlmacen('simulador:paquete');
-if (srv) {
+if (srv && !previa) {
   try { remoto = await srv.api('/leccion'); if (remoto.leccion) copia.escribir(remoto); }
   catch (e) {
     if (e instanceof SesionTerminada) problema = 'sesionTerminada';
     else { remoto = copia.leer(); if (!remoto) problema = 'sinServidor'; } // sin señal: se usa la última copia
   }
 }
-const reg = (remoto && remoto.regional) || regLocal;
+const reg = (remoto && remoto.regional) || (regPrevia && regPrevia.regional) || regLocal;
 if (remoto && remoto.catalogos) aplicarCatalogos(remoto.catalogos);
+if (regPrevia && regPrevia.catalogos) aplicarCatalogos(regPrevia.catalogos);
 const T = reg.textos.leccion;
 
 // ------------------------------------------------------------------ hoja de cálculo
@@ -93,7 +100,10 @@ function elegirLeccion(lecciones, actual, puedeCancelar) {
       <select id="el-leccion">${lecciones.map(l => `<option value="${esc(l.id)}"${l.id === actual ? ' selected' : ''}>${esc(l.titulo)}</option>`).join('')}</select></label>
     <label class="t-campo">${esc(T.elegirMax)}<input id="el-max" type="number" min="1" max="99" inputmode="numeric"></label>
     <div class="t-botones"><button class="primario" id="el-guardar">${esc(T.elegirGuardar)}</button>
-      ${puedeCancelar ? `<button id="el-cancelar">${esc(T.elegirCancelar)}</button>` : ''}</div>`);
+      ${puedeCancelar ? `<button id="el-cancelar">${esc(T.elegirCancelar)}</button>` : ''}</div>
+    ${T.abrirEditor ? `<p class="t-nota">${esc(T.elegirOCrear || '')}</p><div class="t-botones"><button id="el-editor">${esc(T.abrirEditor)}</button></div>` : ''}`);
+  const ed = capa.querySelector('#el-editor');
+  if (ed) ed.addEventListener('click', () => { location.href = 'editor.html'; });
   capa.querySelector('#el-guardar').addEventListener('click', async () => {
     const max = parseInt(capa.querySelector('#el-max').value, 10);
     try {
@@ -148,8 +158,33 @@ async function leccionLocal() {
   return r.json();
 }
 
+function abrirPrevia(leccion) {
+  const sonidos = crearSonidos(SONIDOS);
+  const repro = crearReproductor({ marco, vista, desp, sonidos });
+  const grab = crearGrabadora(vista);
+  let memoria = null;
+  const lec = crearLeccion({
+    leccion, libro, motor, desp, vista, reg, sonidos, repro, grab,
+    buzon: { agregar() {}, vaciar() {} },
+    almacen: { leer: () => memoria, escribir: v => { memoria = JSON.parse(JSON.stringify(v)); } },
+    intentosPrevios: null, maxIntentos: null
+  });
+  const volver = () => { location.href = 'editor.html'; };
+  crearPanel(document.getElementById('panel'), capa, lec, reg, {
+    docente: true,
+    alGuardarDemo: guion => { try { sessionStorage.setItem('simulador:previa-demo', JSON.stringify(guion)); } catch (_) { /* sin memoria */ } volver(); }
+  });
+  const barra = document.createElement('div');
+  barra.className = 'previa-barra'; barra.setAttribute('role', 'status');
+  barra.innerHTML = `<span>${esc(T.previaAviso)}</span><button title="${esc(T.previaAviso)}">${esc(T.previaVolver)}</button>`;
+  barra.querySelector('button').addEventListener('click', volver);
+  marco.appendChild(barra);
+  window.simulador.leccion = lec;
+}
+
 try {
-  if (problema) tarjeta(`<p class="t-texto">${esc(T[problema])}</p>`);
+  if (previa) abrirPrevia(previa);
+  else if (problema) tarjeta(`<p class="t-texto">${esc(T[problema])}</p>`);
   else if (!srv && config.servidor && !local) tarjeta(`<p class="t-texto">${esc(T.abrirDesdeCurso)}</p>`);
   else if (remoto && remoto.pendiente) tarjeta(`<p class="t-texto">${esc(T.leccionPendiente)}</p>`);
   else if (remoto && remoto.configurar) elegirLeccion(remoto.lecciones, null, false);
@@ -171,14 +206,16 @@ try {
     const buzon = crearBuzon('simulador:buzon' + persona, enviar || null);
     const lec = crearLeccion({
       leccion, libro, motor, desp, vista, reg, sonidos, repro, grab, buzon,
-      almacen: crearAlmacen('simulador:' + leccion.identidad.id + persona),
+      // La versión va en la clave: si el docente cambia la lección, no se reanuda un avance de la versión vieja.
+      almacen: crearAlmacen('simulador:' + leccion.identidad.id + (leccion.identidad.version > 1 ? ':v' + leccion.identidad.version : '') + persona),
       intentosPrevios: remoto ? remoto.intentos : null,
       maxIntentos: remoto && remoto.colocacion ? remoto.colocacion.maxIntentos : null
     });
     crearPanel(document.getElementById('panel'), capa, lec, reg, {
       docente,
       alConfigurar: remoto && docente && remoto.lecciones ? () => elegirLeccion(remoto.lecciones, leccion.identidad.id, true) : null,
-      alMonitor: srv && docente ? () => { location.href = 'monitor.html'; } : null
+      alMonitor: srv && docente ? () => { location.href = 'monitor.html'; } : null,
+      alEditor: srv && docente ? () => { location.href = 'editor.html'; } : null
     });
     window.simulador.leccion = lec;
     window.simulador.buzon = buzon;

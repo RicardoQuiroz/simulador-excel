@@ -172,6 +172,9 @@ alter table presencia add column if not exists paso_desde timestamptz;
 create index if not exists eventos_tiempo on eventos (colocacion, t_cliente);
 create index if not exists intentos_fin on intentos (colocacion, fin);
 
+-- Fase 7: quién creó cada lección (solo esa persona o el propietario puede cambiarla).
+alter table lecciones add column if not exists autor uuid references usuarios(id) on delete set null;
+
 -- Seguridad por filas activada y sin reglas: cerrado para todos salvo el servidor.
 do $$
 declare t text;
