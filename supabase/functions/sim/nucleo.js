@@ -413,7 +413,7 @@ export function crearNucleo({ db, traer = fetch, ahora = () => Date.now(), urlBa
     return { cuerpo: { id, version: d.identidad.version } };
   }
 
-  // ------------------------------------------------------------ asistente (Claude)
+  // ------------------------------------------------------------ asistente (IA en línea)
   // Crea una lección a partir de una descripción, o ajusta una lección según un pedido.
   // La clave de la API vive solo en el servidor; aquí se recibe ya lista la función "ia".
   const REGLAS_IA = `Eres el asistente del editor de lecciones de un simulador de Excel en español para estudiantes adultos de zonas rurales de Bolivia que practican desde el celular.
@@ -467,8 +467,13 @@ Reglas obligatorias:
       datos: { modo: b.modo }, t_cliente: iso(), recibido: iso() });
     let r;
     try {
-      r = await ia({ sistema, texto, modelo: (await ajuste('ia_modelo')) || 'claude-opus-5-5', esfuerzo: (await ajuste('ia_esfuerzo')) || 'medium' });
-    } catch (e) { throw new Fallo(502, 'El asistente no respondió. Inténtalo de nuevo en un momento.'); }
+      // Servicio y modelos en la tabla "ajustes": si el principal se queda sin cupo, se usa el de respaldo.
+      const modelos = [(await ajuste('ia_modelo')) || IA_MODELO, (await ajuste('ia_modelo_respaldo')) || IA_RESPALDO].filter((m, k, a) => m && a.indexOf(m) === k);
+      r = await ia({ sistema, texto, url: (await ajuste('ia_url')) || IA_URL, modelos });
+    } catch (e) {
+      console.error('asistente:', e && e.message); // queda en los registros de la función
+      throw new Fallo(502, e && e.cupo ? 'El asistente llegó a su límite gratuito de hoy. Inténtalo más tarde o mañana.' : 'El asistente no respondió. Inténtalo de nuevo en un momento.');
+    }
     exigir(r && r.motivo !== 'refusal', 422, 'El asistente no pudo atender este pedido. Prueba a describirlo de otra forma.');
     exigir(r.motivo !== 'max_tokens', 422, 'La lección pedida es demasiado larga. Pide menos pasos.');
     const t = String(r.texto || ''), i = t.indexOf('{'), j = t.lastIndexOf('}');
@@ -520,4 +525,41 @@ Reglas obligatorias:
   }
 
   return { atender, calcularNota };
+}
+
+// ------------------------------------------------------------ cliente del asistente
+// Habla con cualquier servicio compatible con la API "chat/completions" de OpenAI. Por defecto,
+// Google Gemini (tiene plan gratuito). Para cambiar de servicio basta cambiar en "ajustes":
+// ia_url, ia_modelo e ia_modelo_respaldo, y el secreto IA_API_KEY de la función.
+export const IA_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
+export const IA_MODELO = 'gemini-3.8-flash';
+export const IA_RESPALDO = 'gemini-3.5-flash-lite';
+export function crearIA({ clave, traer = fetch, plazoMs = 140000, ahora = () => Date.now() }) {
+  return async ({ sistema, texto, url, modelos }) => {
+    const fin = ahora() + plazoMs; // las funciones de Supabase se cortan a los 150 segundos
+    let ultimo = null;
+    for (const modelo of modelos) {
+      const quedan = fin - ahora();
+      if (quedan < 5000) break;
+      const corte = new AbortController(), reloj = setTimeout(() => corte.abort(), quedan);
+      try {
+        const r = await traer(url.replace(/\/?$/, '/') + 'chat/completions', {
+          method: 'POST', signal: corte.signal,
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + clave },
+          body: JSON.stringify({ model: modelo, response_format: { type: 'json_object' },
+            messages: [{ role: 'system', content: sistema }, { role: 'user', content: texto }] })
+        });
+        if (!r.ok) {
+          ultimo = new Error('IA ' + modelo + ' respondió ' + r.status + ': ' + String(await r.text()).slice(0, 300));
+          ultimo.cupo = r.status === 429;
+          if ([404, 429, 500, 502, 503, 504].includes(r.status)) continue; // se prueba el modelo siguiente
+          throw ultimo;
+        }
+        const j = await r.json(), c = (j.choices || [])[0] || {};
+        const motivo = c.finish_reason === 'length' ? 'max_tokens' : c.finish_reason === 'content_filter' ? 'refusal' : 'end_turn';
+        return { texto: (c.message && c.message.content) || '', motivo, modelo: j.model || modelo };
+      } finally { clearTimeout(reloj); }
+    }
+    throw ultimo || new Error('IA sin tiempo o sin modelos');
+  };
 }

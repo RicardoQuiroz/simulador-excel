@@ -6,7 +6,7 @@ import { leerXlsx, formatoNumero, xml } from '../js/editor/xlsx.js';
 import { proponer, leccionVacia, formulaLocal, formulaCanon } from '../js/editor/proponer.js';
 import { revisar, probar } from '../js/editor/probar.js';
 import reg from '../js/regional/es-MX.js';
-import { crearNucleo } from '../supabase/functions/sim/nucleo.js';
+import { crearNucleo, crearIA, IA_URL } from '../supabase/functions/sim/nucleo.js';
 import { firmar, generarClave } from '../supabase/functions/sim/jwt.js';
 import { crearMemoria } from './memoria.mjs';
 import { POLITICA, ERRORES_COMUNES } from '../js/leccion/catalogos.js';
@@ -146,7 +146,8 @@ const a1 = await pedir('/editor/asistente', doc1, { modo: 'crear', pedido: 'Quie
 igual('el asistente devuelve una lección', a1.cuerpo.leccion.identidad.titulo, 'Nueva');
 igual('la indicación lleva las reglas y el ejemplo', pedidosIA[0].sistema.includes('rango_relleno') && pedidosIA[0].sistema.includes('L07-funcion-si'), true);
 igual('solo funciones con nombre válido', pedidosIA[0].sistema.includes('mala;'), false);
-igual('modelo por defecto', pedidosIA[0].modelo, 'claude-opus-5-5');
+igual('modelos por defecto: Gemini y su respaldo', pedidosIA[0].modelos, ['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
+igual('servicio por defecto', pedidosIA[0].url, IA_URL);
 const a2 = await pedir('/editor/asistente', doc1, { modo: 'ajustar', pedido: 'haz la pista 2 más clara', leccion: ver.cuerpo.leccion });
 igual('ajustar conserva el identificador', a2.cuerpo.leccion.identidad.id, g1.cuerpo.id);
 respuestaIA = { texto: 'no puedo', motivo: 'refusal' };
@@ -155,6 +156,38 @@ igual('tope diario de usos', (await pedir('/editor/asistente', doc1, { modo: 'cr
 igual('estudiante no usa el asistente', (await pedir('/editor/asistente', est, { modo: 'crear', pedido: 'una lección' })).estado, 403);
 const sinIA = crearNucleo({ db, traer, urlBase: FUNCION });
 igual('sin clave, el asistente está apagado', (await sinIA.atender({ metodo: 'POST', ruta: '/editor/asistente', auth: 'Bearer ' + doc2, cuerpo: { modo: 'crear', pedido: 'una lección' } })).estado, 503);
+
+// ---- 6. cliente del asistente (servicio compatible con OpenAI, por defecto Gemini) ----
+const llamadas = [];
+const servicio = respuestas => async (url, opc) => {
+  const cuerpo = JSON.parse(opc.body); llamadas.push({ url, modelo: cuerpo.model, auth: opc.headers.Authorization, cuerpo });
+  const [estado, datos] = respuestas.shift();
+  return { ok: estado < 300, status: estado, json: async () => datos, text: async () => JSON.stringify(datos) };
+};
+const bien = (texto, fin = 'stop') => [200, { model: 'gemini-x', choices: [{ message: { content: texto }, finish_reason: fin }] }];
+const pide = { sistema: 'reglas', texto: 'pedido', url: IA_URL, modelos: ['m1', 'm2'] };
+let ia1 = crearIA({ clave: 'k', traer: servicio([bien('{"a":1}')]) });
+const r1 = await ia1(pide);
+igual('llama a chat/completions', llamadas[0].url, IA_URL + 'chat/completions');
+igual('envía la clave como Bearer', llamadas[0].auth, 'Bearer k');
+igual('pide respuesta en JSON con sistema y pedido', [llamadas[0].cuerpo.response_format.type, llamadas[0].cuerpo.messages.map(m => m.role)], ['json_object', ['system', 'user']]);
+igual('devuelve el texto', [r1.texto, r1.motivo, r1.modelo], ['{"a":1}', 'end_turn', 'gemini-x']);
+llamadas.length = 0;
+ia1 = crearIA({ clave: 'k', traer: servicio([[429, { error: 'cupo' }], bien('{}')]) });
+await ia1(pide);
+igual('sin cupo, usa el modelo de respaldo', llamadas.map(l => l.modelo), ['m1', 'm2']);
+ia1 = crearIA({ clave: 'k', traer: servicio([[429, {}], [429, {}]]) });
+let e1 = null; try { await ia1(pide); } catch (e) { e1 = e; }
+igual('sin cupo en ninguno: error de cupo', !!(e1 && e1.cupo), true);
+llamadas.length = 0;
+ia1 = crearIA({ clave: 'mala', traer: servicio([[401, {}], bien('{}')]) });
+e1 = null; try { await ia1(pide); } catch (e) { e1 = e; }
+igual('clave inválida: no insiste con otro modelo', [!!e1, llamadas.length], [true, 1]);
+ia1 = crearIA({ clave: 'k', traer: servicio([bien('{"a"', 'length')]) });
+igual('respuesta cortada se marca', (await ia1(pide)).motivo, 'max_tokens');
+const conCupo = crearNucleo({ db, traer, urlBase: FUNCION, ia: crearIA({ clave: 'k', traer: servicio([[429, {}], [429, {}]]) }) });
+const rc = await conCupo.atender({ metodo: 'POST', ruta: '/editor/asistente', auth: 'Bearer ' + doc2, cuerpo: { modo: 'crear', pedido: 'una lección' } });
+igual('sin cupo, el docente recibe un aviso claro', [rc.estado, /límite gratuito/.test(rc.cuerpo.error)], [502, true]);
 
 console.log(fallos ? `\n${fallos} de ${total} pruebas fallaron` : `Las ${total} pruebas pasaron`);
 process.exit(fallos ? 1 : 0);
